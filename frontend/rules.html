@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#102a17">
+  <title>How dispatch works · Base Power Hackathon</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#rules">Skip to dispatch rules</a>
+  <header class="site-header"><a class="wordmark" href="index.html" aria-label="Back to Base Power Hackathon map"><svg aria-hidden="true" viewBox="0 0 30 32"><path d="M17 1L4 19h10l-1 12L27 12H16Z"/></svg><span>Base Power Hackathon</span></a><a class="rules-link" href="index.html">Back to the map <span aria-hidden="true">↗</span></a></header>
+  <main class="rules-main" id="rules">
+    <section class="rules-hero"><h1>Good timing.<br><em>Power in reserve.</em></h1><p>A battery has two jobs: make the most of the grid and keep energy ready when it matters. The decision starts with protection.</p></section>
+    <div class="rules-notice"><strong>Demo rules · demo-reserve-v1.</strong> The dummy scenario illustrates this order of decisions. Its prices, county risks, and actions are invented. No battery is connected or controlled. Model-output actions carry their own supplied rule version; this page's dollar thresholds apply only to the dummy scenario.</div>
+    <ol class="rule-steps">
+      <li><h2>Protect the backup.</h2><p>In the demo, elevated county scenario risk sets a reserve constraint. The Houston example holds reserve during the afternoon even when its price signal favors discharge. An ongoing county scenario also keeps the demo in reserve.</p></li>
+      <li><h2>Read the opportunity.</h2><p>With no reserve constraint, the example charges below $25/MWh, discharges at $80/MWh or above, and holds between those values. These fixed demo thresholds explain the interaction; actual thresholds need contract rates, losses, and operating costs.</p></li>
+      <li><h2>Check the battery.</h2><p>Real dispatch must respect state of charge, capacity, power limits, efficiency, degradation, backup reserve, and customer import/export terms. This demonstration has no device telemetry. Missing price relationships in county mode lead to a conservative demo hold.</p></li>
+      <li><h2>Show the reason.</h2><p>The app displays a versioned, precomputed recommendation. It never derives a production command from a price or risk color. Missing or invalid inputs have an explicit state. Stale forecasts show prior values, with the recommendation labeled as historical.</p></li>
+    </ol>
+    <section class="rules-section" aria-labelledby="revenue-title"><h2 id="revenue-title">Where the value comes from</h2><p>Charging when energy is less costly and discharging when it is more valuable can help balance the grid. Some programs may also compensate batteries for grid services. The actual value depends on participation terms, physical constraints, and delivered performance.</p><p>A wholesale price spread is not a customer's savings or battery profit. The map uses absolute RTM settlement-point prices in USD/MWh. DAM is the known day-ahead reference for the same delivery interval. Fees, battery losses, and wear are not included in those numbers.</p></section>
+    <section class="rules-section" id="data" aria-labelledby="data-title"><h2 id="data-title">Different maps. Different questions.</h2><ul>
+      <li><strong>Energy:</strong> a load-zone forecast has a mean, median (P50), and P10–P90 band for each 15-minute settlement interval. The band has 80% coverage only if calibrated; it is not a guaranteed range. Negative prices are valid, and rare extremes can put the mean outside the band.</li>
+      <li><strong>Outages:</strong> the public view is <strong>county scenario risk</strong>, not a probability that a particular home will lose power. Each hourly value is the chance of the first onset occurring in that hour. These mutually exclusive chances sum to the full 24-hour chance. Models that produce conditional hazards must convert them to first-onset probabilities before exporting.</li>
+      <li><strong>Ongoing scenarios:</strong> remaining-time probabilities appear only after onset has been detected. They describe persistence of the county scenario as of issue time, not a home's restoration time and not a prediction of future outage duration.</li>
+      <li><strong>Coverage:</strong> a missing county row means coverage unknown. It is different from an observed zero. Historical merged outage episodes cannot by themselves establish observation coverage or quiet hours.</li>
+      <li><strong>Geography:</strong> counties, load zones, feeders, and service connections do not form a tidy hierarchy. A secondary model appears only with a documented relationship. The dummy Houston–Harris pairing is an invented co-location example, not a county-wide crosswalk.</li>
+      <li><strong>Time:</strong> source timestamps are UTC. The interface shows America/Chicago with CST or CDT, including the repeated fall hour. Energy days contain 92, 96, or 100 intervals; an outage horizon always covers 24 elapsed hours.</li>
+    </ul><p>Both data modes use the same validation. “Model output” reads <code>data/model-output.json</code>. A missing export stays unavailable. The historical research charts are never used as predictions.</p></section>
+    <section class="rules-section" aria-labelledby="sources-title"><h2 id="sources-title">Sources &amp; map notes</h2><p>The energy shapes are schematic traces of <a href="https://www.ercot.com/news/mediakit/maps">ERCOT's load-zone illustration</a>, published in 2023. Utility-specific regions are noncontiguous and simplified; these shapes are not operational boundaries or an address lookup. Gray areas are outside the illustrated ERCOT footprint. County shapes come from <a href="https://services.twdb.texas.gov/arcgis/rest/services/PWS/Texas_Counties_FIPS/FeatureServer/0">Texas Water Development Board county boundaries</a>.</p><p>Map colors encode expected wholesale price or first county scenario onset in the selected hour. The relief, survey contours, grain, and rain stipple are illustrative; they do not encode terrain elevation, weather, or variation within a region. Raised pieces identify a preview or pinned selection, not higher prices or risk. Accessibility display modes may simplify the permanent texture; missing-data hatching remains distinct.</p><p>Project context: <a href="https://www.basepowercompany.com/">Base Power</a> and the <a href="https://luma.com/aitx-94j6">Base Power × AITX hackathon</a>. This is an independent hackathon project, with no Base logo, proprietary photography, or licensed typeface.</p></section>
+    <a class="back-map" href="index.html">Back to the map</a>
+    <footer class="site-footer"><p><span class="footer-dot"></span>Explore the signal. Keep the limits visible.</p><span>Independent hackathon project</span></footer>
+  </main>
+</body>
+</html>

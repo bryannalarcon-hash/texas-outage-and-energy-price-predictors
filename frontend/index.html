@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#102a17">
+  <meta name="description" content="Explore Texas wholesale energy forecasts and county outage scenarios, with transparent battery decision rules.">
+  <title>Electricity Price Prediction by Location · Base Power Hackathon</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='9' fill='%23102a17'/%3E%3Cpath d='M22 5L10 23h9l-1 12 12-19h-9z' fill='%23b2dd79'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.mjs"></script>
+</head>
+<body>
+  <a class="skip-link" href="#workspace">Skip to map and controls</a>
+  <header class="site-header">
+    <a class="wordmark" href="index.html" aria-label="Base Power Hackathon home"><svg aria-hidden="true" viewBox="0 0 30 32"><path d="M17 1L4 19h10l-1 12L27 12H16Z"/></svg><span>Base Power Hackathon</span></a>
+    <div class="mode-switch" role="group" aria-label="Map mode">
+      <button type="button" data-mode="energy" aria-pressed="true"><span aria-hidden="true">↯</span> Energy</button>
+      <button type="button" data-mode="outages" aria-pressed="false"><span aria-hidden="true">◌</span> Outages</button>
+    </div>
+    <a class="rules-link" href="rules.html">How dispatch works <span aria-hidden="true">↗</span></a>
+  </header>
+  <main>
+    <section class="intro" aria-labelledby="page-title">
+      <div><h1 id="page-title">Electricity Price Prediction by Location</h1></div>
+      <div class="source-controls">
+        <span class="control-label" id="source-label">Data source</span>
+        <div class="source-switch" role="group" aria-labelledby="source-label">
+          <button type="button" data-source="dummy" aria-pressed="true">Dummy data</button>
+          <button type="button" data-source="model" aria-pressed="false">Model output</button>
+        </div>
+        <div id="model-tools" class="model-tools" hidden>
+          <button id="reload" type="button" class="text-button">Reload export</button>
+        </div>
+      </div>
+    </section>
+    <div class="context-strip"><span id="context-date">Texas · Central Time</span><span id="context-window">Loading forecast window</span><span id="status-badge" class="status-badge">Loading</span></div>
+    <div id="status-message" class="status-message" role="status" aria-live="polite"><span id="status-copy">Loading forecast…</span><button id="retry" type="button" hidden>Retry</button></div>
+    <section class="timeline" aria-labelledby="timeline-title">
+      <div class="timeline-heading"><div><h2 id="timeline-title">Forecast interval</h2><p id="timeline-detail">15-minute settlement intervals</p></div><output id="selected-time" for="time-range">Waiting for forecast</output><label class="time-jump">Jump to time<select id="interval-select" aria-label="Jump to forecast interval" disabled><option>Loading…</option></select></label></div>
+      <div class="timeline-controls"><button id="previous" type="button" aria-label="Previous interval">←</button><div class="range-wrap"><output id="scrub-time" for="time-range"></output><input id="time-range" type="range" min="0" max="95" value="0" step="1" aria-label="Forecast interval"><div id="time-ticks" class="timeline-ticks" aria-label="Jump along the timeline"></div></div><button id="next" type="button" aria-label="Next interval">→</button></div>
+    </section>
+    <section id="workspace" class="workspace" aria-label="Texas forecast explorer" tabindex="-1">
+      <div class="map-column">
+        <div class="map-heading"><div><h2 id="map-title">Energy outlook</h2><p id="map-subtitle">Eight ERCOT settlement load zones</p></div><div class="map-controls" role="group" aria-label="Map zoom"><button id="zoom-out" type="button" aria-label="Zoom out" disabled>−</button><button id="zoom-reset" type="button" aria-label="Reset map view">100%</button><button id="zoom-in" type="button" aria-label="Zoom in">+</button></div></div>
+        <p id="zoom-hint" class="zoom-hint">Zoom in to explore terrain and smaller regions.</p>
+        <div class="map-stage" id="map-stage">
+          <svg id="texas-map" viewBox="0 0 1654 1504" role="group" aria-labelledby="map-title map-description">
+            <desc id="map-description">Select a load zone. Focus previews; Enter or Space pins. Use arrow keys to move between regions or use the region selector.</desc>
+            <defs>
+              <pattern id="missing" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(35)"><rect width="9" height="9" fill="#ddddd8"/><path d="M0 0V9" stroke="#919992" stroke-width="2"/></pattern>
+              <pattern id="outside" width="11" height="11" patternUnits="userSpaceOnUse"><rect width="11" height="11" fill="#e3e3dd"/><circle cx="2" cy="2" r="1" fill="#929b91"/></pattern>
+              <g id="map-gradients"></g>
+              <pattern id="terrain-pattern" patternUnits="userSpaceOnUse"><image id="terrain-image" preserveAspectRatio="none"/></pattern>
+              <radialGradient id="terrain-glow"><stop stop-color="#d4a94d" stop-opacity=".28"/><stop offset=".62" stop-color="#b57e22" stop-opacity=".1"/><stop offset="1" stop-color="#5e3d10" stop-opacity="0"/></radialGradient>
+              <pattern id="survey-grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#8b641f" stroke-opacity=".12" stroke-width=".7"/></pattern>
+            </defs>
+            <g id="map-object">
+              <g id="terrain-stage" aria-hidden="true" pointer-events="none"><ellipse id="terrain-halo" fill="url(#terrain-glow)"/><ellipse id="terrain-grid" fill="url(#survey-grid)"/></g>
+              <path id="terrain-base" aria-hidden="true" pointer-events="none"></path>
+              <path id="terrain-mid" aria-hidden="true" pointer-events="none"></path>
+              <path id="state-outline" class="state-outline" aria-hidden="true" pointer-events="none"></path>
+              <path id="map-texture" fill="url(#terrain-pattern)" aria-hidden="true" pointer-events="none"></path>
+              <g id="regions" aria-hidden="true" pointer-events="none"></g>
+              <g id="utility-regions" aria-hidden="true" pointer-events="none"></g>
+              <g id="map-cities" aria-hidden="true" pointer-events="none"></g>
+              <g id="map-labels" aria-hidden="true" pointer-events="none"></g>
+              <g id="region-targets"></g>
+              <g id="utility-targets"></g>
+            </g>
+          </svg>
+          <p id="map-empty-note" class="map-empty-note" hidden>No forecast to display</p>
+        </div>
+        <div id="utility-zones" class="utility-zones" aria-label="ERCOT load zones"><span>Load zones</span><button data-region="LZ_WEST" type="button">West</button><button data-region="LZ_NORTH" type="button">North</button><button data-region="LZ_SOUTH" type="button">South</button><button data-region="LZ_HOUSTON" type="button">Houston</button><button data-region="LZ_AEN" type="button">Austin Energy</button><button data-region="LZ_CPS" type="button">CPS</button><button data-region="LZ_LCRA" type="button">LCRA</button><button data-region="LZ_RAYBN" type="button">Rayburn</button></div>
+        <details class="legend" open><summary id="legend-title">Expected RTM · USD/MWh</summary><div id="legend-scale" class="legend-scale"></div><div class="legend-key"><span><i class="swatch unknown-swatch"></i>Coverage unknown</span><span id="outside-key"><i class="swatch outside-swatch"></i>Outside illustrated ERCOT</span><span id="active-key" hidden><i class="swatch active-swatch"></i>Ongoing at issue</span></div></details>
+        <p id="geometry-note" class="geometry-note">Schematic load zones; not an address lookup. Terrain relief is independent of forecast values.</p>
+      </div>
+      <aside class="decision-panel" aria-labelledby="panel-title">
+        <div class="panel-topline"><span id="selection-state">Explore a region</span><button id="clear-selection" class="text-button" type="button" hidden>Clear</button></div>
+        <label class="control-label" for="region-select">Choose a <span id="region-noun">load zone</span></label>
+        <select id="region-select"><option value="">Select a region</option></select>
+        <div id="panel-content"><div class="panel-empty"><div class="battery-drawing" aria-hidden="true"><i></i><i></i><i></i></div><h2 id="panel-title">Every place has<br>a different signal.</h2><p>Choose a region to see the forecast and the rule behind its battery recommendation.</p><div class="action-guide"><span>↓ Charge</span><span>Ⅱ Hold reserve</span><span>↑ Discharge</span></div><p class="small-note">Focus or hover to preview. Click, tap, Enter, or Space to pin.</p></div></div>
+        <p id="panel-announcement" class="visually-hidden" role="status" aria-live="polite"></p>
+      </aside>
+    </section>
+    <footer class="site-footer"><p><span class="footer-dot"></span>Built for the Base Power × AITX hackathon. Independent project.</p><a href="rules.html#data">Data &amp; limitations</a></footer>
+  </main>
+  <noscript><p class="status-message">JavaScript is needed for the interactive map. <a href="rules.html">Read how dispatch works.</a></p></noscript>
+</body>
+</html>

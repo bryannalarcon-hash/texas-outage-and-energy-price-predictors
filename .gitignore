@@ -1,0 +1,24 @@
+# Public repository allowlist: ignore everything unless explicitly required by the demo.
+*
+
+!.gitignore
+!README.md
+!.env.example
+
+!assets/
+assets/*
+!assets/architecture.png
+!assets/architecture-mobile.png
+
+!frontend/
+frontend/*
+!frontend/index.html
+!frontend/rules.html
+!frontend/styles.css
+!frontend/app.mjs
+!frontend/core.mjs
+!frontend/data/
+frontend/data/*
+!frontend/data/dummy-data.json
+!frontend/data/texas-counties.json
+!frontend/data/texas-load-zones.json
