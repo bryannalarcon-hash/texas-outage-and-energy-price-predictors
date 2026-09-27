@@ -7,8 +7,8 @@
 
 !assets/
 assets/*
+!assets/architecture.gif
 !assets/architecture.png
-!assets/architecture-mobile.png
 
 !frontend/
 frontend/*

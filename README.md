@@ -15,12 +15,12 @@ Open <http://127.0.0.1:8099>. Choose **Dummy data** for the bundled repeatable d
 ## Tech stack & architecture diagram
 
 - **Demo:** native HTML, CSS, JavaScript modules, SVG, and JSON; no runtime packages.
-- **Models:** Python, pandas, scikit-learn, LightGBM, and CatBoost in the upstream research pipeline.
+- **Models:** Python, pandas, scikit-learn, Light Gradient-Boosting Machine (LightGBM), and CatBoost in the upstream research pipeline.
 - **Decision layer:** the target greedy policy prioritizes outage reserve, then price opportunity and battery constraints.
 
 <picture>
-  <source media="(max-width: 600px)" srcset="assets/architecture-mobile.png">
-  <img src="assets/architecture.png" alt="Target architecture: three predictive models feed a greedy battery policy and the Texas map demo">
+  <source media="(prefers-reduced-motion: reduce)" srcset="assets/architecture.png">
+  <img src="assets/architecture.gif" alt="Architecture showing a Real-Time Market price correction model, outage-onset model, and outage-duration model aligned by time and geography before a greedy policy cycles among Charge, Hold, and Discharge for one highlighted Texas settlement load zone">
 </picture>
 
 The public repository contains the runnable demo surface only. An external or future pipeline can write a versioned `frontend/data/model-output.json`; the bundled demo instead uses clearly labeled synthetic data.
