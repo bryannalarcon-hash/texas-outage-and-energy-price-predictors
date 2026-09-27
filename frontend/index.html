@@ -9,6 +9,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='9' fill='%23102a17'/%3E%3Cpath d='M22 5L10 23h9l-1 12 12-19h-9z' fill='%23b2dd79'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
   <script type="module" src="app.mjs"></script>
+  <script type="module" src="forecast-controls.mjs"></script>
 </head>
 <body>
   <a class="skip-link" href="#workspace">Skip to map and controls</a>
@@ -30,7 +31,10 @@
           <button type="button" data-source="model" aria-pressed="false">Model output</button>
         </div>
         <div id="model-tools" class="model-tools" hidden>
+          <button id="pull-forecast" type="button">Pull data &amp; predict</button>
           <button id="reload" type="button" class="text-button">Reload export</button>
+          <p id="forecast-job-status" class="small-note" role="status" aria-live="polite">Checking forecast service…</p>
+          <details class="forecast-source-details"><summary>Inputs &amp; automatic updates</summary><p>New input sets run once, ten minutes after the service first observes them. Tomorrow’s prices wait for ERCOT’s DAM release.</p><ul id="forecast-source-list"></ul></details>
         </div>
       </div>
     </section>
@@ -41,6 +45,7 @@
       <div class="timeline-controls"><button id="previous" type="button" aria-label="Previous interval">←</button><div class="range-wrap"><output id="scrub-time" for="time-range"></output><input id="time-range" type="range" min="0" max="95" value="0" step="1" aria-label="Forecast interval"><div id="time-ticks" class="timeline-ticks" aria-label="Jump along the timeline"></div></div><button id="next" type="button" aria-label="Next interval">→</button></div>
     </section>
     <section id="workspace" class="workspace" aria-label="Texas forecast explorer" tabindex="-1">
+      <div id="map-atmosphere" aria-hidden="true"></div>
       <div class="map-column">
         <div class="map-heading"><div><h2 id="map-title">Energy outlook</h2><p id="map-subtitle">Eight ERCOT settlement load zones</p></div><div class="map-controls" role="group" aria-label="Map zoom"><button id="zoom-out" type="button" aria-label="Zoom out" disabled>−</button><button id="zoom-reset" type="button" aria-label="Reset map view">100%</button><button id="zoom-in" type="button" aria-label="Zoom in">+</button></div></div>
         <p id="zoom-hint" class="zoom-hint">Zoom in to explore terrain and smaller regions.</p>
@@ -52,6 +57,7 @@
               <pattern id="outside" width="11" height="11" patternUnits="userSpaceOnUse"><rect width="11" height="11" fill="#e3e3dd"/><circle cx="2" cy="2" r="1" fill="#929b91"/></pattern>
               <g id="map-gradients"></g>
               <pattern id="terrain-pattern" patternUnits="userSpaceOnUse"><image id="terrain-image" preserveAspectRatio="none"/></pattern>
+              <clipPath id="relief-clip"><path id="relief-clip-path"/></clipPath>
               <radialGradient id="terrain-glow"><stop stop-color="#d4a94d" stop-opacity=".28"/><stop offset=".62" stop-color="#b57e22" stop-opacity=".1"/><stop offset="1" stop-color="#5e3d10" stop-opacity="0"/></radialGradient>
               <pattern id="survey-grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#8b641f" stroke-opacity=".12" stroke-width=".7"/></pattern>
             </defs>
@@ -62,6 +68,7 @@
               <path id="state-outline" class="state-outline" aria-hidden="true" pointer-events="none"></path>
               <path id="map-texture" fill="url(#terrain-pattern)" aria-hidden="true" pointer-events="none"></path>
               <g id="regions" aria-hidden="true" pointer-events="none"></g>
+              <path id="map-relief" clip-path="url(#relief-clip)" aria-hidden="true" pointer-events="none"/>
               <g id="utility-regions" aria-hidden="true" pointer-events="none"></g>
               <g id="map-cities" aria-hidden="true" pointer-events="none"></g>
               <g id="map-labels" aria-hidden="true" pointer-events="none"></g>
@@ -76,7 +83,7 @@
         <p id="geometry-note" class="geometry-note">Schematic load zones; not an address lookup. Terrain relief is independent of forecast values.</p>
       </div>
       <aside class="decision-panel" aria-labelledby="panel-title">
-        <div class="panel-topline"><span id="selection-state">Explore a region</span><button id="clear-selection" class="text-button" type="button" hidden>Clear</button></div>
+        <div class="panel-topline"><span id="selection-state" hidden></span><button id="clear-selection" class="text-button" type="button" hidden>Clear</button></div>
         <label class="control-label" for="region-select">Choose a <span id="region-noun">load zone</span></label>
         <select id="region-select"><option value="">Select a region</option></select>
         <div id="panel-content"><div class="panel-empty"><div class="battery-drawing" aria-hidden="true"><i></i><i></i><i></i></div><h2 id="panel-title">Every place has<br>a different signal.</h2><p>Choose a region to see the forecast and the rule behind its battery recommendation.</p><div class="action-guide"><span>↓ Charge</span><span>Ⅱ Hold reserve</span><span>↑ Discharge</span></div><p class="small-note">Focus or hover to preview. Click, tap, Enter, or Space to pin.</p></div></div>

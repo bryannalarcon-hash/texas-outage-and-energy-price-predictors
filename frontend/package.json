@@ -1,0 +1,11 @@
+{
+  "name": "bpc-grid-outlook",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node check.mjs && node browser-check.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}

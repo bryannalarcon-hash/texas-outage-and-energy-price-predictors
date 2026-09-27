@@ -9,6 +9,12 @@ const shortTime = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago'
 const escape = value => String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
 const percentLabel = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
 const percent = value => `${percentLabel.format(value * 100)}%`;
+const terrainImages = Object.fromEntries(['energy', 'outages'].map(mode => {
+  const terrainImage = new Image();
+  terrainImage.src = `data/texas-terrain-${mode}.webp`;
+  terrainImage.decode().catch(() => {});
+  return [mode, terrainImage];
+}));
 let state = initialState();
 let geometry = null;
 let terrain = null;
@@ -20,10 +26,12 @@ let gradientFrame = null;
 let renderedTimeline = null;
 let zoomLevel = 1;
 let mapView = null;
+let zoomAnimation = null;
 let pan = null;
 let didPan = false;
 let keyboardMapFocus = false;
 let pointerFocusPending = false;
+let initialView = true;
 
 function dispatch(event) {
   const nextState = transition(state, event, { geometry, now: Date.now() });
@@ -69,7 +77,7 @@ function paintGradients(from = state.mode, progress = 1) {
       if (level === 1) atmosphere.push(`rgb(${color.join(' ')} / .28) ${position * 100}%`);
     }
   }
-  get('workspace').style.setProperty('--map-atmosphere', `linear-gradient(158deg, ${atmosphere.join(',')})`);
+  get('map-atmosphere').style.backgroundImage = `linear-gradient(158deg, ${atmosphere.join(',')})`;
 }
 
 function animateGradients(from) {
@@ -88,19 +96,35 @@ function animateGradients(from) {
   gradientFrame = requestAnimationFrame(frame);
 }
 
-function updateMapView() {
+function updateMapView(animate = false) {
   if (!mapView) return;
   const { left, top, width, height } = mapView;
   const zoomWidth = width / zoomLevel;
   const zoomHeight = height / zoomLevel;
   mapView.centerX = clamp(mapView.centerX, left + zoomWidth / 2, left + width - zoomWidth / 2);
   mapView.centerY = clamp(mapView.centerY, top + zoomHeight / 2, top + height - zoomHeight / 2);
-  get('texas-map').setAttribute('viewBox', [mapView.centerX - zoomWidth / 2, mapView.centerY - zoomHeight / 2, zoomWidth, zoomHeight].join(' '));
-  get('texas-map').classList.toggle('is-zoomed', zoomLevel > 1);
+  const map = get('texas-map');
+  const target = [mapView.centerX - zoomWidth / 2, mapView.centerY - zoomHeight / 2, zoomWidth, zoomHeight];
+  const screen = animate && !reducedMotion.matches ? map.getScreenCTM() : null;
+  zoomAnimation?.cancel();
+  map.setAttribute('viewBox', target.join(' '));
+  map.style.setProperty('--terrain-opacity', .86 - .12 * (zoomLevel - 1));
+  map.classList.remove('is-zooming');
+  if (screen) {
+    const stage = get('map-stage').getBoundingClientRect();
+    const scale = Math.min(map.clientWidth / zoomWidth, map.clientHeight / zoomHeight);
+    const ratio = screen.a / scale;
+    const offsetX = screen.e - stage.left - ratio * ((map.clientWidth - zoomWidth * scale) / 2 - target[0] * scale);
+    const offsetY = screen.f - stage.top - ratio * ((map.clientHeight - zoomHeight * scale) / 2 - target[1] * scale);
+    map.classList.add('is-zooming');
+    zoomAnimation = map.animate([{ transform: `translate(${offsetX}px, ${offsetY}px) scale(${ratio})` }, { transform: 'none' }], { duration: 340, easing: 'cubic-bezier(.16,1,.3,1)' });
+    zoomAnimation.finished.then(() => map.classList.remove('is-zooming')).catch(() => {});
+  }
+  map.classList.toggle('is-zoomed', zoomLevel > 1);
   get('zoom-reset').textContent = `${Math.round(zoomLevel * 100)}%`;
   get('zoom-in').disabled = zoomLevel >= 2.5;
   get('zoom-out').disabled = zoomLevel <= 1;
-  get('zoom-hint').textContent = zoomLevel > 1 ? 'Drag to pan · select 100% to reset the view.' : 'Zoom in to explore terrain and smaller regions.';
+  get('zoom-hint').textContent = zoomLevel > 1 ? 'Drag to pan · select the percentage to reset.' : 'Zoom in to explore terrain and smaller regions.';
 }
 
 function zoomMap(level) {
@@ -112,7 +136,7 @@ function zoomMap(level) {
     mapView.centerY = point.y;
   }
   zoomLevel = clamp(level, 1, 2.5);
-  updateMapView();
+  updateMapView(true);
 }
 
 async function loadSource(source, saved = null) {
@@ -128,12 +152,18 @@ async function loadSource(source, saved = null) {
     const payloadRequest = fetch(`data/${filename}`, { signal: operation.signal, cache: 'no-store' }).then(response => response.status === 404 && source === 'model'
       ? unavailablePayload('No compliant model-output.json has been exported. Historical research data is not a forecast.')
       : readJsonResponse(response));
-    const terrainRequest = terrain ? Promise.resolve(terrain) : fetch('data/texas-terrain.json', { signal: operation.signal }).then(readJsonResponse).catch(() => null);
+    const terrainRequest = terrain ? Promise.resolve(terrain) : fetch('data/texas-terrain.json', { signal: AbortSignal.any([operation.signal, AbortSignal.timeout(2000)]) }).then(readJsonResponse).catch(() => null);
     const [nextGeometry, payload, nextTerrain] = await Promise.all([geometryRequest, payloadRequest, terrainRequest]);
-    if (operation.signal.aborted) return;
+    if (operation.signal.aborted) throw new Error('Forecast loading aborted.');
     geometry = nextGeometry;
     terrain = nextTerrain;
     dispatch({ type: 'RESOLVE', requestId, payload });
+    if (initialView && state.data) {
+      initialView = false;
+      if (source === 'model' && !saved?.time && !state.data.timelines.energy.length && state.data.timelines.outages.length) {
+        dispatch({ type: 'MODE', mode: 'outages' });
+      }
+    }
   } catch (error) {
     dispatch({ type: 'REJECT', requestId, message: operation.signal.aborted ? 'Forecast loading timed out. Retry or switch data source.' : error.message });
   } finally { clearTimeout(timeout); }
@@ -149,8 +179,9 @@ function buildMap() {
   const padding = 58 * unit;
   const centerX = left + width / 2;
   const centerY = top + height / 2;
-  mapView = { left: left - padding, top: top - padding, width: width + padding * 2, height: height + padding * 2, centerX, centerY };
-  zoomLevel = 1;
+  const relativeX = mapView ? (mapView.centerX - mapView.left) / mapView.width : .5;
+  const relativeY = mapView ? (mapView.centerY - mapView.top) / mapView.height : .5;
+  mapView = { left: left - padding, top: top - padding, width: width + padding * 2, height: height + padding * 2, centerX: left - padding + relativeX * (width + padding * 2), centerY: top - padding + relativeY * (height + padding * 2) };
   updateMapView();
   get('map-object').setAttribute('transform', `translate(${centerX} ${centerY}) rotate(-1.2) skewX(-2) scale(1 .91) translate(${-centerX} ${-centerY})`);
   map.style.setProperty('--terrain-depth', `${31 * unit}px`);
@@ -171,7 +202,7 @@ function buildMap() {
   for (const id of ['terrain-pattern', 'terrain-image']) {
     for (const [attribute, value] of Object.entries({ x: left, y: top, width, height })) get(id).setAttribute(attribute, value);
   }
-  get('terrain-image').setAttribute('href', `data/texas-terrain-${state.mode}.webp`);
+  get('terrain-image').setAttribute('href', terrainImages[state.mode].src);
   for (const id of ['terrain-halo', 'terrain-grid']) {
     for (const [attribute, value] of Object.entries({ cx: left + width * .51, cy: top + height * .56, rx: width * .46, ry: height * .45 })) get(id).setAttribute(attribute, value);
   }
@@ -188,6 +219,7 @@ function buildMap() {
   get('terrain-base').setAttribute('d', outline);
   get('terrain-mid').setAttribute('d', outline);
   get('map-texture').setAttribute('d', outline);
+  get('map-relief').setAttribute('d', outline);
   const options = document.createDocumentFragment();
   const placeholder = document.createElement('option');
   placeholder.value = '';
@@ -202,7 +234,7 @@ function buildMap() {
     const title = svgElement('title');
     title.textContent = region.name;
     path.append(title);
-    piece.append(svgElement('path', { d: region.path, class: 'region-side' }), svgElement('path', { d: region.path, class: 'region-fill unknown' }), svgElement('path', { d: region.path, class: 'region-surface' }));
+    piece.append(svgElement('path', { d: region.path, class: 'region-side' }), svgElement('g', { class: 'region-walls' }), svgElement('path', { d: region.path, class: 'region-fill unknown' }), svgElement('path', { d: region.path, class: 'region-surface' }));
     (utility ? utilityGroup : group).append(piece);
     get(utility ? 'utility-targets' : 'region-targets').append(path);
     const option = document.createElement('option');
@@ -256,6 +288,7 @@ function renderMap() {
   const groups = [get('regions'), get('utility-regions')];
   for (const group of groups) group.classList.toggle('has-active', Boolean(activeId));
   const focused = document.activeElement?.dataset.region;
+  const reliefPaths = [];
   for (const piece of groups.flatMap(group => [...group.children])) {
     const path = get('texas-map').querySelector(`[data-region="${piece.dataset.regionPiece}"]`);
     const region = geometry[state.mode].regions.find(item => item.id === path.dataset.region);
@@ -270,7 +303,19 @@ function renderMap() {
     const label = `${region.name}${state.mode === 'outages' ? ' County' : ''}: ${data.label}${state.payloadStatus === 'stale' ? ', stale forecast' : ''}`;
     path.setAttribute('aria-label', label);
     path.firstElementChild.textContent = label;
+    const raised = region.id === activeId || region.id === state.selectedRegion;
+    const walls = piece.querySelector('.region-walls');
+    if (raised && !walls.childElementCount) {
+      const unit = geometry[state.mode].view_box[2] / 900;
+      for (let depth = 30; depth > 0; depth--) walls.append(svgElement('path', { d: region.path, transform: `translate(0 ${depth * unit})` }));
+    } else if (!raised && walls.childElementCount) walls.replaceChildren();
+    if (state.mode === 'outages') {
+      const parent = get(raised ? 'utility-regions' : 'regions');
+      if (piece.parentElement !== parent) parent.append(piece);
+      if (!raised && (data.value !== null || data.active)) reliefPaths.push(region.path);
+    }
   }
+  get('relief-clip-path').setAttribute('d', reliefPaths.join(''));
   for (const id of [state.selectedRegion, activeId]) {
     const piece = id && get('texas-map').querySelector(`[data-region-piece="${id}"]`);
     if (piece) piece.parentElement.append(piece);
@@ -315,7 +360,7 @@ function geographyName(mode, id) {
 function energyBlock(selection) {
   const row = selection.energy;
   const content = row?.availability === 'available'
-    ? `<div class="metric-value">${escape(formatMoney(row.rtm_mean_usd_mwh))} <small>USD/MWh</small></div><p class="metric-subtext">Expected RTM · DAM ${escape(formatMoney(row.dam_spp_usd_mwh))}<br>Median (P50) ${escape(formatMoney(row.rtm_p50_usd_mwh))}</p><div class="uncertainty-band"><span>P10 ${escape(formatMoney(row.rtm_p10_usd_mwh))}</span><span>P90 ${escape(formatMoney(row.rtm_p90_usd_mwh))}</span></div><p class="small-note">P10–P90 is an 80% band only if calibrated. Wholesale prices, not a household rate or profit.</p><p class="small-note">${escape(formatTime(selection.energyInterval.interval_start_utc))} – ${escape(formatTime(selection.energyInterval.interval_end_utc))}</p>`
+    ? `<div class="metric-value">${escape(formatMoney(row.rtm_mean_usd_mwh))} <small>USD/MWh</small></div><p class="metric-subtext">Expected RTM · DAM ${escape(formatMoney(row.dam_spp_usd_mwh))}<br>Median (P50) ${escape(formatMoney(row.rtm_p50_usd_mwh))}</p><div class="uncertainty-band"><span>P10 ${escape(formatMoney(row.rtm_p10_usd_mwh))}</span><span>P90 ${escape(formatMoney(row.rtm_p90_usd_mwh))}</span></div><p class="small-note">${state.data.payload.price.provenance ? 'Mean: adaptive DAM + E2. Quantiles: E2 only; not calibrated to the blend. ' : ''}P10–P90 is an 80% band only if calibrated. Wholesale prices, not a household rate or profit.</p><p class="small-note">${escape(formatTime(selection.energyInterval.interval_start_utc))} – ${escape(formatTime(selection.energyInterval.interval_end_utc))}</p>`
     : `<p class="unavailable">${selection.energyId ? 'Price forecast unavailable for this region and interval.' : 'Energy signal unavailable. No explicit load-zone relationship was supplied.'}</p>`;
   return `<section class="model-block${state.mode === 'energy' ? ' emphasis' : ''}" aria-label="Energy model"><h3>Energy signal</h3><p class="geography">${escape(geographyName('energy', selection.energyId))}${selection.energyId ? ` · ${escape(selection.energyId)}` : ''}</p>${content}</section>`;
 }
@@ -335,7 +380,7 @@ function outageBlock(selection) {
     const active = row.active_outage;
     content = `<div class="metric-value" style="font-size:21px">Ongoing at issue</div><p class="metric-subtext">County scenario age: ${escape(active.elapsed_minutes)} minutes.</p><p class="small-note">Chance the county scenario remains unresolved for more than:</p><div class="uncertainty-band">${[1, 4, 12, 24].map(hours => `<span>${hours}h<br>${percent(active[`p_remaining_gt_${hours}h`])}</span>`).join('')}</div><p class="small-note">As of ${escape(formatTime(state.data.payload.outage.issued_at_utc))}. County persistence, not a home's restoration time.</p>`;
   } else {
-    content = `<div class="metric-value">${percent(row.p_first_start_by_hour[selection.outageHour])} <small>this hour</small></div><p class="metric-subtext">First onset in this hour<br>${percent(row.p_any_next_24h)} any onset in the full 24-hour horizon</p><p class="small-note">Hourly first-onset chances sum to the 24-hour chance. County scenario risk, not a home's outage probability.</p>`;
+    content = `<div class="metric-value">${percent(row.p_first_start_by_hour[selection.outageHour])} <small>this hour</small></div><p class="metric-subtext">First onset in this hour<br>${percent(row.p_any_next_24h)} any onset in the full 24-hour horizon</p><p class="small-note">Hourly first-onset chances sum to the 24-hour chance. County scenario risk, not a home's outage probability.</p>${row.coverage === 'scenario' ? '<p class="small-note"><strong>Conditional scenario:</strong> assumes no outage was active at forecast origin. No live outage-status feed.</p>' : ''}`;
   }
   return `<section class="model-block${state.mode === 'outages' ? ' emphasis' : ''}" aria-label="Outage model"><h3>County scenario risk</h3><p class="geography">${escape(geographyName('outages', selection.outageId))}${selection.outageId ? ` · FIPS ${escape(selection.outageId)}` : ''}</p>${content}</section>`;
 }
@@ -345,7 +390,11 @@ function metadata(selection) {
   const rows = [['Last export', formatTime(payload.generated_at_utc)], ['Rule version', payload.decisions.rule_version]];
   if (payload.outage.status === 'available') rows.push(['County scenario', payload.outage.scenario_definition]);
   for (const [name, run] of [['Price', payload.price], ['Outage', payload.outage]]) {
-    if (run.status === 'available') rows.push([`${name} issued`, formatTime(run.issued_at_utc)], [`${name} input cutoff`, formatTime(run.input_cutoff_utc)], [`${name} model`, run.model_version], [`${name} expires after`, `${run.max_age_hours} hours from issue`]);
+    if (run.status === 'available') {
+      rows.push([`${name} published`, formatTime(run.issued_at_utc)], [`${name} input cutoff`, formatTime(run.input_cutoff_utc)], [`${name} model`, run.model_version], [`${name} expires after`, `${run.max_age_hours} hours from ${run.forecast_origin_utc ? 'forecast origin' : 'issue'}`]);
+      if (run.forecast_origin_utc) rows.push([`${name} forecast origin`, formatTime(run.forecast_origin_utc)]);
+      if (run.provenance?.blend?.adaptation_status) rows.push(['Blend calibration', run.provenance.blend.adaptation_status === 'frozen_history' ? 'Historical calibration; waiting for new forecasts with delayed actual prices' : 'Updated with eligible delayed actual prices']);
+    }
     else rows.push([`${name} model`, run.reason]);
   }
   if (selection.decision) rows.push(['Rule strength (not probability)', `${selection.decision.strength}`], ['Reserve constraint', selection.decision.reserve_constraint ? 'Active' : 'Not active']);
@@ -355,7 +404,8 @@ function metadata(selection) {
 function renderPanel() {
   const selection = viewSelection(state);
   get('clear-selection').hidden = !state.selectedRegion && !state.previewRegion;
-  get('selection-state').textContent = state.previewRegion ? 'Preview · choose to pin' : state.selectedRegion ? 'Pinned region' : 'Explore a region';
+  get('selection-state').textContent = state.previewRegion ? 'Preview · choose to pin' : state.selectedRegion ? 'Pinned region' : '';
+  get('selection-state').hidden = !state.previewRegion && !state.selectedRegion;
   let content;
   if (!selection) {
     const emptyStates = {
@@ -369,6 +419,7 @@ function renderPanel() {
     const { decision } = selection;
     const isDemo = state.data.payload.decisions.is_demo;
     const stale = state.payloadStatus === 'stale';
+    const elapsed = state.dataSource === 'model' && Date.parse(selection.interval.interval_end_utc) <= Date.now();
     const main = state.mode === 'energy' ? selection.energy : selection.outage;
     const unknown = !main || (state.mode === 'energy' ? main.availability !== 'available' : main.coverage === 'unknown');
     const title = unknown ? 'Coverage unknown' : decision ? ACTIONS[decision.action] : 'No recommendation';
@@ -376,10 +427,10 @@ function renderPanel() {
     const reasons = decision ? decision.reason_codes.map(code => {
       if (!isDemo && ['low_price', 'price_opportunity', 'no_clear_opportunity'].includes(code)) return 'The exported policy determines this price-based action.';
       return REASONS[code];
-    }).join(' ') : unknown ? 'There is no trustworthy signal for this region and interval.' : 'A versioned decision was not supplied for this interval. Model values remain available below.';
+    }).join(' ') : unknown ? 'There is no trustworthy signal for this region and interval.' : state.data.payload.price.status === 'unavailable' ? 'Battery plans wait for a complete day-ahead price curve. The county forecast is available below.' : 'A versioned decision was not supplied for this interval. Model values remain available below.';
     const modelBlocks = state.mode === 'energy' ? energyBlock(selection) + outageBlock(selection) : outageBlock(selection) + energyBlock(selection);
     const detailsOpen = mobileLayout.matches ? '' : ' open';
-    content = `<div class="decision-heading"><span class="tag">${isDemo ? 'Demo rules' : 'Exported rules'}${stale ? ' · Stale' : ''}</span><p>${escape(geographyName(state.mode, selection.region))}</p>${stale ? '<p class="old-action">Prior recommendation — not current guidance</p>' : ''}<h2 id="panel-title">${decision && !unknown ? `<span class="decision-icon" aria-hidden="true">${icons[decision.action]}</span> ` : ''}${escape(title)}</h2><p>${escape(reasons)}</p><p class="small-note">${escape(formatTime(selection.interval.interval_start_utc))} – ${escape(formatTime(selection.interval.interval_end_utc))}</p></div><details class="signal-details"${detailsOpen}><summary>Model details and freshness</summary><div class="signal-details-body">${modelBlocks}<p class="relationship-note">${escape(selection.relationship?.description ?? 'No cross-geography pairing supplied. Load zones and counties do not nest.')}</p>${metadata(selection)}</div></details>`;
+    content = `<div class="decision-heading" data-action="${decision && !unknown ? decision.action : 'unavailable'}"><span class="tag">${isDemo ? 'Demo rules' : state.data.payload.decisions.scope === 'simulated_household' ? (decision ? 'Simulated battery plan' : 'Forecast only') : 'Exported rules'}${stale ? ' · Stale' : ''}</span><h2 id="panel-title">${decision && !unknown ? `<span class="decision-icon" aria-hidden="true">${icons[decision.action]}</span> ` : ''}${escape(title)}</h2><p class="decision-place">${escape(geographyName(state.mode, selection.region))}</p>${decision && (decision.locked || (elapsed && state.data.payload.decisions.scope === 'simulated_household')) ? '<p class="old-action">Prior simulated action — not current guidance</p>' : stale ? '<p class="old-action">Prior recommendation — not current guidance</p>' : ''}<p>${escape(reasons)}</p>${decision && state.data.payload.decisions.scope === 'simulated_household' ? `<p class="plan-physics">Charge ${decision.charge_kwh.toFixed(2)} kWh · Discharge ${decision.discharge_kwh.toFixed(2)} kWh<br>Stored ${decision.stored_energy_start_kwh.toFixed(1)} → ${decision.stored_energy_end_kwh.toFixed(1)} kWh · Reserve ${decision.reserve_kwh.toFixed(1)} kWh</p><p class="small-note">${decision.risk_window_covered ? 'Reserve uses the complete next-six-hour risk window.' : 'Incomplete risk horizon: policy uses a 5 kWh reserve.'} Hypothetical household; no battery is controlled.</p>` : ''}<p class="small-note">${escape(formatTime(selection.interval.interval_start_utc))} – ${escape(formatTime(selection.interval.interval_end_utc))}</p></div><details class="signal-details"${detailsOpen}><summary>Model details and freshness</summary><div class="signal-details-body">${modelBlocks}<p class="relationship-note">${escape(selection.relationship?.description ?? 'No cross-geography pairing supplied. Load zones and counties do not nest.')}</p>${metadata(selection)}</div></details>`;
     const announcement = `${geographyName(state.mode, selection.region)}. ${stale ? 'Stale. Prior recommendation: ' : ''}${title}. ${formatTime(selection.interval.interval_start_utc)}.`;
     if (announcement !== lastAnnouncement) {
       get('panel-announcement').textContent = announcement;
@@ -440,9 +491,9 @@ function render() {
   const messages = {
     loading: 'Loading forecast… You can switch data sources at any time.',
     current: state.dataSource === 'dummy' ? 'Demo scenario. All prices and risk estimates are invented.' : 'Forecast export loaded. Recommendations follow the supplied rule version.',
-    partial: `${state.dataSource === 'dummy' ? 'Demo scenario. ' : ''}Partial coverage: hatched regions have no verified signal; some model pairings or decisions are unavailable.`,
+    partial: state.dataSource === 'model' && state.data?.payload.price.status === 'unavailable' ? `${state.data.payload.price.reason}. ${state.mode === 'energy' ? 'Select Outages to inspect the county outlook.' : 'The county outlook is available below.'}` : `${state.dataSource === 'dummy' ? 'Demo scenario. ' : ''}Partial coverage: hatched regions have no signal; county scenarios assume no active outage, and some battery plans are unavailable.`,
     stale: 'Stale forecast. Prior values remain visible for inspection; recommendations are not current guidance.',
-    empty: 'Model output unavailable. Add a compliant forecast export, reload, or choose Dummy data. Historical observations are never used as predictions.',
+    empty: 'No forecast is ready for this view. Pull data & predict to check published inputs, or inspect the labeled dummy scenario.',
     error: `Forecast rejected: ${state.error ?? 'Unable to load the map data.'}`
   };
   get('status-copy').textContent = messages[state.payloadStatus];
@@ -466,6 +517,7 @@ document.querySelectorAll('button[data-mode]').forEach(button => button.addEvent
 }));
 get('retry').addEventListener('click', () => loadSource(state.dataSource, snapshot(state)));
 get('reload').addEventListener('click', () => loadSource('model', snapshot(state)));
+window.addEventListener('forecast-ready', () => { if (state.dataSource === 'model') loadSource('model', snapshot(state)); });
 get('region-select').addEventListener('change', event => dispatch(event.target.value ? { type: 'PIN', region: event.target.value } : { type: 'CLEAR' }));
 get('clear-selection').addEventListener('click', () => dispatch({ type: 'CLEAR' }));
 get('time-range').addEventListener('input', event => dispatch({ type: 'TIME', index: Number(event.target.value) }));
@@ -492,11 +544,36 @@ get('utility-zones').addEventListener('click', event => {
   const button = event.target.closest('button[data-region]');
   if (button) dispatch({ type: 'PIN', region: button.dataset.region });
 });
+
+function pointerRegion(event) {
+  const original = event.target.closest('.region');
+  if (state.mode === 'energy' && ['LZ_AEN', 'LZ_CPS', 'LZ_LCRA', 'LZ_RAYBN'].includes(original?.dataset.region)) return original;
+  for (const id of [state.previewRegion, state.selectedRegion]) {
+    if (!id) continue;
+    const fill = get('texas-map').querySelector(`[data-region-piece="${id}"] .region-fill`);
+    if (!fill) continue;
+    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(fill.getScreenCTM().inverse());
+    if (fill.isPointInFill(point)) return get('texas-map').querySelector(`[data-region="${id}"]`);
+  }
+  return original;
+}
+
+function previewPointer(event) {
+  if (event.pointerType === 'touch' || keyboardMapFocus || pan || get('texas-map').classList.contains('is-zooming')) return;
+  const path = pointerRegion(event);
+  if (path) dispatch({ type: 'PREVIEW', region: path.dataset.region });
+}
+
 get('texas-map').addEventListener('pointerdown', event => {
   pointerFocusPending = true;
   keyboardMapFocus = false;
   didPan = false;
-  if (zoomLevel > 1 && event.button === 0) pan = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, centerX: mapView.centerX, centerY: mapView.centerY, matrix: get('texas-map').getScreenCTM().inverse() };
+  const target = pointerRegion(event);
+  if (target && target !== event.target.closest('.region')) {
+    event.preventDefault();
+    target.focus({ preventScroll: true });
+  }
+  if (zoomLevel > 1 && event.button === 0 && !get('texas-map').classList.contains('is-zooming')) pan = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, centerX: mapView.centerX, centerY: mapView.centerY, matrix: get('texas-map').getScreenCTM().inverse() };
 });
 get('texas-map').addEventListener('pointermove', event => {
   if (!pan || event.pointerId !== pan.pointerId) return;
@@ -518,10 +595,8 @@ for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) get('te
   pan = null;
   get('texas-map').classList.remove('is-panning');
 });
-get('texas-map').addEventListener('pointerover', event => {
-  const path = event.target.closest('.region');
-  if (path && event.pointerType !== 'touch' && !keyboardMapFocus && !pan) dispatch({ type: 'PREVIEW', region: path.dataset.region });
-});
+get('texas-map').addEventListener('pointerover', previewPointer);
+get('texas-map').addEventListener('pointermove', previewPointer);
 get('workspace').addEventListener('pointerleave', () => dispatch({ type: 'UNPREVIEW' }));
 get('texas-map').addEventListener('focusin', event => {
   if (event.target.matches('.region')) {
@@ -538,7 +613,7 @@ get('texas-map').addEventListener('focusout', event => {
 });
 get('texas-map').addEventListener('click', event => {
   if (didPan) return;
-  const path = event.target.closest('.region');
+  const path = pointerRegion(event);
   if (path) dispatch({ type: 'PIN', region: path.dataset.region });
 });
 get('texas-map').addEventListener('keydown', event => {
@@ -575,4 +650,5 @@ setInterval(() => dispatch({ type: 'TICK', now: Date.now() }), 60000);
 let saved = null;
 try { saved = readSnapshot(sessionStorage.getItem(storageKey)); } catch { }
 if (saved) state = { ...state, mode: saved.mode };
-loadSource(saved?.dataSource ?? 'dummy', saved);
+const requestedSource = new URLSearchParams(location.search).get('source');
+loadSource(saved?.dataSource ?? (requestedSource === 'dummy' ? 'dummy' : 'model'), saved);

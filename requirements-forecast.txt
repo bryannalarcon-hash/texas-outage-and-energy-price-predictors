@@ -1,0 +1,6 @@
+numpy==2.5.3
+pandas==3.0.6
+scipy==1.16.3
+lightgbm==4.7.0
+pyshp==3.1.6
+shapely==2.1.2

@@ -52,6 +52,7 @@
     "slope_exaggeration": 7,
     "dem_smoothing_sigma_px": 0.65,
     "local_relief_sigma_px": 12,
+    "shade_contrast": 2.3,
     "neutral_gray": 128,
     "python": "3.14.4",
     "numpy": "2.5.3",
@@ -246,13 +247,13 @@
         1920
       ],
       "preserve_aspect_ratio": "none",
-      "sha256": "24fb7a3f9d8ac60df7992e212c0c83f2fe52ff4fec20bacba375a98d6ee597ff",
+      "sha256": "2dbc2ef6a64992b7be582245069a41194064c6300901ab8e10119b65ecee9357",
       "visible_grayscale_percentiles": [
-        69.0,
-        113.0,
-        127.0,
-        138.0,
-        157.0
+        0.0,
+        94.0,
+        126.0,
+        151.0,
+        195.0
       ]
     },
     "energy": {
@@ -274,13 +275,13 @@
         2182
       ],
       "preserve_aspect_ratio": "none",
-      "sha256": "ea7c70ad2a87dbddaae4cef5e8b223685db26bed3d766382688e64f5f68be730",
+      "sha256": "078b89e062cbb744c6c435bd1a8d599ecc93427cc9a231013e2806a5dd95337e",
       "visible_grayscale_percentiles": [
-        69.0,
-        113.0,
-        127.0,
-        138.0,
-        158.0
+        0.0,
+        94.0,
+        126.0,
+        151.0,
+        197.0
       ]
     }
   },
@@ -504,7 +505,7 @@
         "longitude": -104.86,
         "latitude": 31.89,
         "elevation_m": 2546.54,
-        "shade_std": 41.34,
+        "shade_std": 62.16,
         "outages": [
           183.54,
           322.68
@@ -520,7 +521,7 @@
         "longitude": -104.16,
         "latitude": 30.67,
         "elevation_m": 1954.34,
-        "shade_std": 49.09,
+        "shade_std": 78.0,
         "outages": [
           222.54,
           402.21
@@ -536,7 +537,7 @@
         "longitude": -101.7,
         "latitude": 34.94,
         "elevation_m": 943.05,
-        "shade_std": 24.37,
+        "shade_std": 42.65,
         "outages": [
           359.58,
           119.08
@@ -552,7 +553,7 @@
         "longitude": -101.85,
         "latitude": 35.22,
         "elevation_m": 1110.33,
-        "shade_std": 10.54,
+        "shade_std": 23.63,
         "outages": [
           351.23,
           100.02
@@ -568,7 +569,7 @@
         "longitude": -97.743,
         "latitude": 30.267,
         "elevation_m": 161.59,
-        "shade_std": 16.03,
+        "shade_std": 35.69,
         "outages": [
           580.03,
           428.26
@@ -584,7 +585,7 @@
         "longitude": -95.369,
         "latitude": 29.76,
         "elevation_m": 14.87,
-        "shade_std": 2.95,
+        "shade_std": 6.79,
         "outages": [
           712.28,
           460.88
@@ -597,6 +598,6 @@
       }
     ],
     "missing_visible_dem_pixels": 0,
-    "mountain_vs_houston_shade_std_ratio": 14.01
+    "mountain_vs_houston_shade_std_ratio": 9.15
   }
 }

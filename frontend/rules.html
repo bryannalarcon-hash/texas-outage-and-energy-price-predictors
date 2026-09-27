@@ -4,33 +4,169 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#102a17">
+  <meta name="description" content="How a DAM price correction, county outage forecast and constrained battery scheduler work together. Results and limits of our 2025 simulation.">
   <title>How dispatch works · Base Power Hackathon</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="dispatch.css">
 </head>
-<body>
-  <a class="skip-link" href="#rules">Skip to dispatch rules</a>
-  <header class="site-header"><a class="wordmark" href="index.html" aria-label="Back to Base Power Hackathon map"><svg aria-hidden="true" viewBox="0 0 30 32"><path d="M17 1L4 19h10l-1 12L27 12H16Z"/></svg><span>Base Power Hackathon</span></a><a class="rules-link" href="index.html">Back to the map <span aria-hidden="true">↗</span></a></header>
-  <main class="rules-main" id="rules">
-    <section class="rules-hero"><h1>Good timing.<br><em>Power in reserve.</em></h1><p>A battery has two jobs: make the most of the grid and keep energy ready when it matters. The decision starts with protection.</p></section>
-    <div class="rules-notice"><strong>Demo rules · demo-reserve-v1.</strong> The dummy scenario illustrates this order of decisions. Its prices, county risks, and actions are invented. No battery is connected or controlled. Model-output actions carry their own supplied rule version; this page's dollar thresholds apply only to the dummy scenario.</div>
-    <ol class="rule-steps">
-      <li><h2>Protect the backup.</h2><p>In the demo, elevated county scenario risk sets a reserve constraint. The Houston example holds reserve during the afternoon even when its price signal favors discharge. An ongoing county scenario also keeps the demo in reserve.</p></li>
-      <li><h2>Read the opportunity.</h2><p>With no reserve constraint, the example charges below $25/MWh, discharges at $80/MWh or above, and holds between those values. These fixed demo thresholds explain the interaction; actual thresholds need contract rates, losses, and operating costs.</p></li>
-      <li><h2>Check the battery.</h2><p>Real dispatch must respect state of charge, capacity, power limits, efficiency, degradation, backup reserve, and customer import/export terms. This demonstration has no device telemetry. Missing price relationships in county mode lead to a conservative demo hold.</p></li>
-      <li><h2>Show the reason.</h2><p>The app displays a versioned, precomputed recommendation. It never derives a production command from a price or risk color. Missing or invalid inputs have an explicit state. Stale forecasts show prior values, with the recommendation labeled as historical.</p></li>
-    </ol>
-    <section class="rules-section" aria-labelledby="revenue-title"><h2 id="revenue-title">Where the value comes from</h2><p>Charging when energy is less costly and discharging when it is more valuable can help balance the grid. Some programs may also compensate batteries for grid services. The actual value depends on participation terms, physical constraints, and delivered performance.</p><p>A wholesale price spread is not a customer's savings or battery profit. The map uses absolute RTM settlement-point prices in USD/MWh. DAM is the known day-ahead reference for the same delivery interval. Fees, battery losses, and wear are not included in those numbers.</p></section>
-    <section class="rules-section" id="data" aria-labelledby="data-title"><h2 id="data-title">Different maps. Different questions.</h2><ul>
-      <li><strong>Energy:</strong> a load-zone forecast has a mean, median (P50), and P10–P90 band for each 15-minute settlement interval. The band has 80% coverage only if calibrated; it is not a guaranteed range. Negative prices are valid, and rare extremes can put the mean outside the band.</li>
-      <li><strong>Outages:</strong> the public view is <strong>county scenario risk</strong>, not a probability that a particular home will lose power. Each hourly value is the chance of the first onset occurring in that hour. These mutually exclusive chances sum to the full 24-hour chance. Models that produce conditional hazards must convert them to first-onset probabilities before exporting.</li>
-      <li><strong>Ongoing scenarios:</strong> remaining-time probabilities appear only after onset has been detected. They describe persistence of the county scenario as of issue time, not a home's restoration time and not a prediction of future outage duration.</li>
-      <li><strong>Coverage:</strong> a missing county row means coverage unknown. It is different from an observed zero. Historical merged outage episodes cannot by themselves establish observation coverage or quiet hours.</li>
-      <li><strong>Geography:</strong> counties, load zones, feeders, and service connections do not form a tidy hierarchy. A secondary model appears only with a documented relationship. The dummy Houston–Harris pairing is an invented co-location example, not a county-wide crosswalk.</li>
-      <li><strong>Time:</strong> source timestamps are UTC. The interface shows America/Chicago with CST or CDT, including the repeated fall hour. Energy days contain 92, 96, or 100 intervals; an outage horizon always covers 24 elapsed hours.</li>
-    </ul><p>Both data modes use the same validation. “Model output” reads <code>data/model-output.json</code>. A missing export stays unavailable. The historical research charts are never used as predictions.</p></section>
-    <section class="rules-section" aria-labelledby="sources-title"><h2 id="sources-title">Sources &amp; map notes</h2><p>The energy shapes are schematic traces of <a href="https://www.ercot.com/news/mediakit/maps">ERCOT's load-zone illustration</a>, published in 2023. Utility-specific regions are noncontiguous and simplified; these shapes are not operational boundaries or an address lookup. Gray areas are outside the illustrated ERCOT footprint. County shapes come from <a href="https://services.twdb.texas.gov/arcgis/rest/services/PWS/Texas_Counties_FIPS/FeatureServer/0">Texas Water Development Board county boundaries</a>.</p><p>Map colors encode expected wholesale price or first county scenario onset in the selected hour. Directional lighting and animated color transitions are visual treatments, not weather forecasts or variation in predictions within a region. Raised pieces identify a preview or pinned selection, not higher prices or risk. Accessibility display modes may simplify the permanent texture; missing-data hatching remains distinct.</p><p>The surface uses elevation-derived shaded relief from <a href="https://registry.opendata.aws/terrain-tiles/">Mapzen / AWS Terrain Tiles</a>: SRTM and GMTED2010 courtesy of the U.S. Geological Survey, with NOAA ETOPO1 bathymetry. Lighting exaggerates real ridges and valleys; this is a hillshade, not a survey-grade 3D mesh. County terrain follows the original map projection; energy terrain is approximately registered to the schematic. City markers use <a href="https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2025_Gazetteer/2025_gaz_place_48.txt">U.S. Census 2025 Gazetteer</a> internal city points, not street addresses.</p><p>Project context: <a href="https://www.basepowercompany.com/">Base Power</a> and the <a href="https://luma.com/aitx-94j6">Base Power × AITX hackathon</a>. This is an independent hackathon project, with no Base logo, proprietary photography, or licensed typeface.</p></section>
+<body class="dispatch-page">
+  <a class="skip-link" href="#rules">Skip to dispatch explanation</a>
+  <header class="site-header">
+    <a class="wordmark" href="index.html" aria-label="Back to Base Power Hackathon map"><svg aria-hidden="true" viewBox="0 0 30 32"><path d="M17 1L4 19h10l-1 12L27 12H16Z"/></svg><span>Base Power Hackathon</span></a>
+    <a class="rules-link" href="index.html">Back to the map <span aria-hidden="true">↗</span></a>
+  </header>
+  <main class="dispatch-main" id="rules">
+    <section class="dispatch-hero" aria-labelledby="dispatch-title">
+      <div>
+        <p class="page-label">How dispatch works</p>
+        <h1 id="dispatch-title">Battery scheduling</h1>
+        <p class="hero-copy">Tomorrow’s day-ahead price (DAM) is a useful starting point. Actual prices move. We predict the correction, keep an outage reserve, and plan when a battery should charge or discharge.</p>
+        <p class="simulation-label"><span aria-hidden="true"></span>Simulated battery plans. No device commands.</p>
+      </div>
+      <figure class="reserve-hero">
+        <svg viewBox="0 0 440 290" role="img" aria-labelledby="reserve-title reserve-desc">
+          <title id="reserve-title">A 25 kilowatt-hour battery, with an adjustable reserve</title>
+          <desc id="reserve-desc">Five kilowatt-hours form the minimum reserve. Risk can add up to ten kilowatt-hours more. Depending on that reserve, ten to twenty kilowatt-hours of capacity remain above the reserve floor. This shows capacity allocation, not current state of charge.</desc>
+          <defs><pattern id="risk-hatch" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(35)"><rect width="9" height="9" fill="#f2df9e"/><line x1="0" y1="0" x2="0" y2="9" stroke="#c39a36" stroke-width="2"/></pattern></defs>
+          <text class="svg-heading" x="23" y="25">25 kWh of capacity</text>
+          <rect x="62" y="43" width="57" height="10" rx="3" fill="#1e4d2b"/>
+          <rect x="25" y="54" width="132" height="209" rx="15" fill="#fff" stroke="#1e4d2b" stroke-width="3"/>
+          <rect x="34" y="63" width="114" height="75" rx="7" fill="#e7efdf"/>
+          <rect x="34" y="142" width="114" height="75" rx="4" fill="url(#risk-hatch)"/>
+          <rect x="34" y="221" width="114" height="33" rx="5" fill="#1e4d2b"/>
+          <path d="M89 78l-14 23h12l-3 21 21-28H92l3-16Z" fill="#55704a"/>
+          <path class="diagram-line" d="M155 102h26M155 180h26M155 239h26"/>
+          <text class="svg-value" x="194" y="96">10–20 kWh</text>
+          <text class="svg-note" x="194" y="118">room above the reserve</text>
+          <text class="svg-value" x="194" y="171">+0–10 kWh</text>
+          <text class="svg-note" x="194" y="193">extra reserve as risk rises</text>
+          <text class="svg-value" x="194" y="234">5 kWh</text>
+          <text class="svg-note" x="194" y="255">minimum reserve</text>
+        </svg>
+      </figure>
+    </section>
+
+    <section class="dispatch-section" aria-labelledby="signals-title">
+      <div class="section-heading"><h2 id="signals-title">Price and outage forecasts</h2></div>
+      <div class="model-flow">
+        <div class="forecast-pair">
+          <article class="forecast price-forecast">
+            <div class="forecast-heading"><h3>RTM price forecast</h3><svg viewBox="0 0 104 40" aria-hidden="true"><path d="M2 28L20 22L37 26L55 10L72 18L88 6L102 15" fill="none" stroke="#9c7824" stroke-width="3"/><path d="M2 31L20 24L37 28L55 14L72 19L88 12L102 17" fill="none" stroke="#1e4d2b" stroke-width="2" stroke-dasharray="4 3"/></svg></div>
+            <p><strong>Adaptive DAM + E2 blend</strong><br>A frozen LightGBM model corrects DAM using 19 price-curve, calendar and zone inputs.</p>
+            <div class="model-equation" aria-label="Predicted price equals DAM plus weight times E2 minus DAM">DAM + <var>w</var> × (E2 − DAM)</div>
+            <p class="figure-note">The E2 weight updates daily from earlier outcomes, delayed 48 hours. It ranged from 66.6% to 90.5% in this test.</p>
+          </article>
+          <article class="forecast outage-forecast">
+            <div class="forecast-heading"><h3>County outage risk</h3><svg viewBox="0 0 104 40" aria-hidden="true"><path d="M2 33h10V28h10V18h10V7h10v9h10v9h10v5h10v2h10v2h20" fill="none" stroke="#06507e" stroke-width="2.5"/></svg></div>
+            <p><strong>County outage-onset model</strong><br>Gradient-boosted trees use weather outlooks, location and time to predict 24 hourly first-onset chances.</p>
+            <div class="model-equation">Next 6 hours’ risk → 5–15 kWh reserve</div>
+            <p class="figure-note">County risk, not a calibrated home probability. The fixed 12:00 UTC outage window covers only part of tomorrow’s price day; uncovered six-hour windows use the 5 kWh floor.</p>
+          </article>
+        </div>
+        <div class="flow-join" aria-hidden="true"><span></span><b>→</b></div>
+        <article class="optimizer">
+          <svg class="optimizer-icon" viewBox="0 0 64 54" aria-hidden="true"><path d="M2 12h18l12 15-12 15H2M32 27h27M49 17l10 10-10 10" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="5" cy="12" r="4" fill="currentColor"/><circle cx="5" cy="42" r="4" fill="currentColor"/></svg>
+          <h3>Daily battery schedule</h3>
+          <p>A <strong>mixed-integer optimizer</strong> chooses 15-minute actions to maximize expected wholesale savings while obeying the battery and reserve limits.</p>
+          <div class="action-outcomes" aria-label="Possible actions"><span>↓ Charge</span><span>• Hold</span><span>↑ Discharge</span></div>
+          <p class="figure-note">It compares the whole day’s opportunities. A low price alone does not force a charge.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="dispatch-section" aria-labelledby="limits-title">
+      <div class="section-heading"><h2 id="limits-title">Battery constraints</h2></div>
+      <div class="constraint-grid">
+        <article class="constraint">
+          <h3>Reserve requirement</h3>
+          <div class="reserve-scale" role="img" aria-label="The requested reserve rises linearly from 5 kWh at zero six-hour risk to 15 kWh at 25 percent risk, then stays at 15 kWh."><div><b>5 kWh</b><b>15 kWh</b></div><div class="reserve-ramp"></div><div><span>0% risk</span><span>25%+ risk</span></div></div>
+          <p>More predicted risk means more stored energy. A new target ramps up only as fast as the battery can charge. Incomplete risk coverage uses the 5 kWh floor.</p>
+        </article>
+        <article class="constraint">
+          <h3>Capacity and power limits</h3>
+          <div class="hardware-specs"><div><b>25<span> kWh</span></b><span>capacity</span></div><div><b>5<span> kW</span></b><span>power limit</span></div><div><b>90<span>%</span></b><span>round-trip efficiency</span></div></div>
+          <p>Never charge and discharge together. A 15-minute interval can import or deliver at most 1.25 kWh through the battery. Losses count against every trade.</p>
+        </article>
+        <article class="constraint">
+          <h3>Daily stored-energy balance</h3>
+          <svg class="inventory-chart" viewBox="0 0 300 87" role="img" aria-labelledby="inventory-title"><title id="inventory-title">Illustrative stored-energy path: starts and ends at 15 kWh each day.</title><path d="M12 42h275" stroke="#809376" stroke-dasharray="4 4"/><path d="M14 42L63 15h36l64 56h43l43-29h37" stroke="#1e4d2b" stroke-width="3" fill="none"/><circle cx="14" cy="42" r="4" fill="#1e4d2b"/><circle cx="286" cy="42" r="4" fill="#1e4d2b"/><text x="8" y="84">Start: 15 kWh</text><text x="205" y="84">End: 15 kWh</text></svg>
+          <p>Equal daily starting and ending charge makes the comparison fair. New outage forecasts can replan the remaining day; past actions stay fixed.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="dispatch-section results-section" aria-labelledby="results-title">
+      <div class="section-heading"><h2 id="results-title">Simulation results</h2><p>184 days · July–December 2025 · four representative locations</p></div>
+      <div class="results-grid">
+        <figure class="earnings-chart">
+          <figcaption>Additional wholesale savings per household, versus DAM</figcaption>
+          <div class="earnings-row"><span>DAM only</span><div class="earnings-track"><i style="--bar:0%"></i></div><b>$0.00</b></div>
+          <div class="earnings-row"><span>E2 only</span><div class="earnings-track"><i style="--bar:60.17%"></i></div><b>+$0.42</b></div>
+          <div class="earnings-row blend-row"><span>Adaptive blend</span><div class="earnings-track"><i style="--bar:100%"></i></div><b>+$0.70</b></div>
+          <div class="result-equation"><span>$118.17<small>DAM savings</small></span><b>→</b><span>$118.87<small>Blend savings</small></span><strong>+0.595%</strong></div>
+          <p class="figure-note">Same battery, same outage policy; only the price forecast changes. Actions are planned from forecasts, then valued at actual RTM prices.</p>
+        </figure>
+        <aside class="fleet-estimate" aria-labelledby="fleet-title">
+          <h3 id="fleet-title">At 30,000 comparable homes</h3>
+          <p class="fleet-number">$41,816<span>/ year</span></p>
+          <p class="fleet-math">$0.702667 × 30,000 × 365 ÷ 184</p>
+          <p><strong>An annualized illustration, not a forecast.</strong> It assumes the measured gain repeats. Base’s stated 30,000+ homes are not all verified comparable ERCOT batteries.</p>
+        </aside>
+      </div>
+      <p class="result-caveat"><strong>Import purchases, export receipts and battery losses are included.</strong> This is a small retrospective gain over our DAM controller, not a comparison with Base’s controller or an estimate of Base’s total profit.</p>
+      <details class="dispatch-details"><summary>How confident is the improvement?</summary><div class="details-content"><p>E2 had slightly better price RMSE; the blend made better battery decisions in this sample. The blend’s exact improvement over DAM was <strong>$0.702667 per home (0.594634%)</strong>. A descriptive 95% interval was $0.14–$1.44 over 184 days. Its $0.28 advantage over E2 had an interval of −$0.04 to +$0.91, so that ranking is not settled.</p><p>The four scenarios are Harris/Houston, Dallas/North, Nueces/South and Midland/West. The period had prior research exposure; it is not a pristine holdout. Historical archives do not establish original publication or revision timing, and the 48-hour RTM delay is an availability assumption.</p></div></details>
+    </section>
+
+    <section class="dispatch-section" aria-labelledby="factors-title">
+      <div class="section-heading"><h2 id="factors-title">Factors in the estimate</h2></div>
+      <div class="factor-columns">
+        <div><h3><span class="factor-mark" aria-hidden="true">✓</span> Considered</h3><ul>
+          <li>DAM forecasts and realized RTM settlement prices.</li>
+          <li>Wholesale import costs and export payments at the same RTM price.</li>
+          <li>25 kWh capacity, 5 kW limits and 90% round-trip efficiency.</li>
+          <li>County risk, a 5–15 kWh reserve and achievable charging ramps.</li>
+          <li>1.25 kW constant home load; equal 15 kWh daily endpoints.</li>
+          <li>Earlier-only forecast inputs, 48-hour label delay, time zones and daylight saving.</li>
+        </ul></div>
+        <div><h3><span class="factor-mark excluded-mark" aria-hidden="true">−</span> Not priced or modeled</h3><ul>
+          <li>Retail tariffs, TDU delivery charges, QSE fees and taxes.</li>
+          <li>Battery aging, degradation, capital, implementation and forecast/model operating costs.</li>
+          <li>Solar, variable household demand and live device telemetry.</li>
+          <li>Ancillary-service income, local network and site export limits, or a separate grid-loss model.</li>
+          <li>Actual home outages, restoration duration or avoided-outage value.</li>
+          <li>Verified address-to-settlement mapping and original data vintages.</li>
+        </ul></div>
+      </div>
+      <p class="figure-note">The grid stays connected in the simulation. Reserve targets are policy choices, not learned duration requirements; actual household backup protection was not tested.</p>
+    </section>
+
+    <section class="dispatch-section future-section" aria-labelledby="future-title">
+      <div class="section-heading"><h2 id="future-title">Future work</h2></div>
+      <div class="future-grid">
+        <article><div class="permutation-icon" aria-hidden="true">▦</div><h3>More permutations</h3><p>Compare blend and reserve settings, plus individual and grouped feature permutations and interactions. Keep future tests separate from tuning.</p></article>
+        <article><div class="feature-icon" aria-hidden="true">＋</div><h3>More numerical features</h3><p>Test load, wind, solar, weather, generation outages, fuel and congestion. Remove inputs that add no held-out value.</p></article>
+        <article><div class="ceiling-icon" aria-hidden="true">⌁</div><h3>Revenue upper bound</h3><p>Add realistic settlement terms and compare with a perfect-price upper bound under the same battery rules.</p></article>
+      </div>
+    </section>
+
+    <section class="dispatch-section references-section" id="data" aria-label="Data definitions and sources">
+      <details class="dispatch-details"><summary>Model details, data contract and map interpretation</summary><div class="details-content">
+        <p><strong>Price:</strong> EXP002 is a frozen 64-tree LightGBM model trained on 629,728 observations from January 2023 through March 30, 2025. Its 19 inputs describe DAM itself, that day’s curve and neighboring hours, zone, calendar and time. The daily blend fits a weight between zero and one by minimizing past squared price error; it does not directly optimize earnings. A new installation starts from the saved historical weight until its new, 48-hour-delayed outcome history is available.</p>
+        <p><strong>Outage:</strong> a HistGradientBoostingClassifier uses 11 numeric inputs: location, seasonal and hourly cycles, SPC and WPC outlook ranks and availability, and forecast lead. It was trained on 2018–2021 and calibrated on 2022. Hourly first-onset probabilities sum to a 24-hour chance; they are not independent events. Forecasts retain their fixed 12:00 UTC origin and cover the next 24 elapsed hours. There is no live outage-state feed; the scenario assumes no ongoing outage. The separate post-onset duration model is not used to set these reserves.</p>
+        <p><strong>Reserve rule:</strong> for next-six-hour onset probability <var>q</var>, requested kWh = 5 + 10 × min(1, <var>q</var> ÷ 0.25). A new target is limited by achievable charging. In this test, new targets exceeded available stored energy for about 153 hours per household; this is not an observed outage measure.</p>
+        <p><strong>Contract:</strong> the map reads a versioned <code>data/model-output.json</code> export. Price forecasts are absolute RTM prices in USD/MWh; negative values are valid. P10/P50/P90 summarize predictive uncertainty, not guaranteed limits. Outage rows describe county scenarios, never a calibrated home-specific probability. A missing row means unknown coverage, not zero risk.</p>
+        <p><strong>Recommendations:</strong> supplied actions have their own rule version. Model outputs describe simulated plans, with no connected hardware. The separate dummy scenario still uses invented prices and simple demonstration thresholds. Stale outputs remain labeled historical; missing or invalid inputs remain unavailable.</p>
+        <p><strong>Time and geography:</strong> timestamps are UTC; the interface displays America/Chicago, including CST/CDT. A local energy day can have 92, 96 or 100 quarter-hours. Counties, load zones and service connections do not align exactly; documented scenario relationships are not address-level assignments.</p>
+      </div></details>
+      <details class="dispatch-details"><summary>Sources and map credits</summary><div class="details-content">
+        <p>Market data: <a href="https://www.ercot.com/mktinfo/prices">ERCOT market prices</a>. Outlook providers: <a href="https://www.spc.noaa.gov/products/outlook/">NOAA Storm Prediction Center</a> and <a href="https://www.wpc.ncep.noaa.gov/qpf/excessive_rain.shtml">Weather Prediction Center</a>. Historical outlooks use the <a href="https://mesonet.agron.iastate.edu/">Iowa Environmental Mesonet</a>.</p>
+        <p>The fleet illustration uses <a href="https://www.basepowercompany.com/">Base Power’s stated 30,000+ homes</a>, checked September 27, 2026. It does not establish an eligible ERCOT fleet count. Project context: the <a href="https://luma.com/aitx-94j6">Base Power × AITX hackathon</a>. This is an independent project.</p>
+        <p>Energy shapes trace <a href="https://www.ercot.com/news/mediakit/maps">ERCOT’s 2023 load-zone illustration</a>; they are schematic, not operational boundaries. Counties use <a href="https://services.twdb.texas.gov/arcgis/rest/services/PWS/Texas_Counties_FIPS/FeatureServer/0">Texas Water Development Board boundaries</a>. City markers are <a href="https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2025_Gazetteer/2025_gaz_place_48.txt">U.S. Census 2025 Gazetteer</a> internal points, not street addresses.</p>
+        <p>Terrain uses <a href="https://registry.opendata.aws/terrain-tiles/">Mapzen / AWS Terrain Tiles</a>, with USGS SRTM and GMTED2010 and NOAA ETOPO1. Relief is exaggerated and approximately registered to the energy schematic. Colors encode forecasts; lighting and raised selections are visual treatments, not additional predictions.</p>
+      </div></details>
+    </section>
     <a class="back-map" href="index.html">Back to the map</a>
-    <footer class="site-footer"><p><span class="footer-dot"></span>Explore the signal. Keep the limits visible.</p><span>Independent hackathon project</span></footer>
+    <footer class="site-footer"><p><span class="footer-dot"></span>Forecast the opportunity. Keep the reserve.</p><span>Independent hackathon project</span></footer>
   </main>
 </body>
 </html>

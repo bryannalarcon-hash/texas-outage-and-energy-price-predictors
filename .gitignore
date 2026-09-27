@@ -1,9 +1,43 @@
-# Public repository allowlist: ignore everything unless explicitly required by the demo.
+# Public predictor repository: deny by default, then allow runtime and reproducibility files.
 *
 
 !.gitignore
 !README.md
 !.env.example
+!requirements-forecast.txt
+!requirements-price.txt
+!requirements-outage.txt
+
+# Predictor training, frozen inference, source polling, scheduling, and checks.
+!analyze_dam_rt.py
+!build_outlook_features.py
+!build_price_model_data.py
+!download_eaglei_tx.py
+!run_price_experiment.py
+!run_dam_context_experiments.py
+!train_price_models.py
+!train_outage_models.py
+!forecast_models.py
+!forecast_sources.py
+!forecast_dispatch.py
+!forecast_server.py
+!test_forecast_models.py
+!test_forecast_sources.py
+!test_forecast_dispatch.py
+!test_forecast_server.py
+
+!model_assets/
+model_assets/*
+!model_assets/export_frozen_models.py
+!model_assets/manifest.json
+!model_assets/exp002_mean.txt
+!model_assets/exp002_p10.txt
+!model_assets/exp002_p50.txt
+!model_assets/exp002_p90.txt
+!model_assets/onset_county.json
+!model_assets/counties.json
+!model_assets/blend_history.json
+!model_assets/replay.json
 
 !assets/
 assets/*
@@ -12,11 +46,24 @@ assets/*
 
 !frontend/
 frontend/*
+!frontend/package.json
+!frontend/package-lock.json
 !frontend/index.html
 !frontend/rules.html
 !frontend/styles.css
+!frontend/dispatch.css
 !frontend/app.mjs
 !frontend/core.mjs
+!frontend/forecast-controls.mjs
+!frontend/validate-export.mjs
+!frontend/check.mjs
+!frontend/browser-check.mjs
+!frontend/forecast-browser-check.mjs
+!frontend/test-data.mjs
+!frontend/README.md
+!frontend/model-output-contract.md
+!frontend/terrain-sources.md
+!frontend/.gitignore
 !frontend/data/
 frontend/data/*
 !frontend/data/dummy-data.json
@@ -25,3 +72,15 @@ frontend/data/*
 !frontend/data/texas-terrain-energy.webp
 !frontend/data/texas-terrain-outages.webp
 !frontend/data/texas-terrain.json
+
+# Generated forecasts, raw data, planning/research documents, screenshots, and host deployment stay local.
+forecast_cache/
+frontend/data/model-output.json
+frontend/screenshots/
+/data/
+deploy/
+deployment/
+web/
+.venv/
+node_modules/
+__pycache__/

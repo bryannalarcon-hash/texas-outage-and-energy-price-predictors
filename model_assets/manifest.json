@@ -1,0 +1,101 @@
+{
+  "format_version": 1,
+  "model_fits": 0,
+  "sources": {
+    "data/price/experiments/EXP002/folds/2025Q2/models.joblib": "b1622ccf36b09412396a2c55d043046f06b3c09ec1105e05ff0cd0c75c8fb30e",
+    "data/outage/models/onset_county.joblib": "2b87e89e4dbb83109591479eb8b926cb0cd7208f326cd3942cfe6b9446f4b6fe",
+    "run_dam_context_experiments.py": "f9fb946a6793213d2aa0b5d6690a30e904b4104819b10ff61bfa70295830cca8",
+    "train_outage_models.py": "8c79e5c912fb000d356d961d5644766c740d3281756e6f61a02b8c0daab345bc",
+    "data/price/experiments/BATTERY_BLEND/weights.csv": "23d1e38793d9c1545ae1de6cf7094b977f2f545470c17681c01e4c6e687194da",
+    "data/price/experiments/BATTERY_BLEND/prices.csv.gz": "fb50d113092f1607c77698b4f56cbf55543343a031c90b965e3fcb8a41347d0c",
+    "data/price/experiments/BATTERY_BLEND/outage_inputs/forecasts.csv.gz": "6285d6607706f3fab95cb604e32d52987d85b7768c278299250f22d431fbbf8b",
+    "data/price/experiments/BATTERY_BLEND/outage_inputs/county_issue_inputs.csv.gz": "4e1983566e50335de5843603f65c00e77b7b1e071a229bacc6ec238938f75498"
+  },
+  "assets_sha256": {
+    "exp002_mean.txt": "73ecf15eff14c6e31cd7db8616a6ac862241fd5e1b0328a49f53658def76b1e5",
+    "exp002_p10.txt": "c089b760784cd860b75fd86f9765f1188104ad66e7c1862eb09d9e9b7ba78a20",
+    "exp002_p50.txt": "acf76803f661fe405d7411f71a939b0692c606bccf3f6d3b78b913bd4f7f99bc",
+    "exp002_p90.txt": "6eb4913e68ef1c2267f5ffd5a7ca9f217f2327f94722d6c11c0da56836557abb",
+    "onset_county.json": "14e1fd027ff052c1950ed96e260da19846e9ea2222b937b40528d65356301c87",
+    "counties.json": "2c7e221e6c51e13a6f3c939c0119d5583a46df284cafae55121d19713d6a5d5a",
+    "blend_history.json": "bacfcce9ffac3b3b96c90758a492c370d18532a10da736977aa1585b040379bb",
+    "replay.json": "3b7f7e1789f513bf01af8eb2ddeac0b2fa28fa704e9344c35ba94f83d4ddf949"
+  },
+  "price": {
+    "family": "LightGBM residual regression and quantile regression",
+    "features": [
+      "dam_asinh",
+      "local_hour",
+      "day_of_year",
+      "zone_code",
+      "weekday",
+      "quarter",
+      "repeated",
+      "dam_day_min",
+      "dam_day_max",
+      "dam_day_mean",
+      "dam_day_std",
+      "dam_day_negative_share",
+      "dam_hours_to_day_peak",
+      "dam_above_day_min",
+      "dam_below_day_max",
+      "dam_prev_hour",
+      "dam_next_hour",
+      "dam_ramp_from_prev",
+      "dam_ramp_to_next"
+    ],
+    "zones": {
+      "LZ_AEN": 0,
+      "LZ_CPS": 1,
+      "LZ_HOUSTON": 2,
+      "LZ_LCRA": 3,
+      "LZ_NORTH": 4,
+      "LZ_RAYBN": 5,
+      "LZ_SOUTH": 6,
+      "LZ_WEST": 7
+    },
+    "selected_iterations": {
+      "mean": 64,
+      "p10": 23,
+      "p50": 265,
+      "p90": 3
+    },
+    "training_period": "2023-01-01 through 2025-03-30",
+    "training_rows": 629728,
+    "mean": "DAM + clipped least-squares weight * EXP002 residual",
+    "quantiles": "Unblended EXP002 P10/P50/P90, sorted to prevent crossing; not an adaptive predictive interval."
+  },
+  "outage": {
+    "family": "HistGradientBoostingClassifier + isotonic calibration",
+    "features": [
+      "latitude",
+      "longitude",
+      "doy_sin",
+      "doy_cos",
+      "spc_risk",
+      "spc_available",
+      "wpc_risk",
+      "wpc_available",
+      "hour_sin",
+      "hour_cos",
+      "lead_hours"
+    ],
+    "training_years": "2018-2021",
+    "selection_calibration_year": 2022,
+    "forecast_origin_hour_utc": 12,
+    "eligible_counties": 186,
+    "target": "First recorded PNNL qualifying county scenario onset in 24 hours",
+    "limitations": [
+      "County events are not household outages.",
+      "No active episode is assumed unless observed status is supplied.",
+      "Missing recorded scenarios may reflect missing coverage.",
+      "Duration is unavailable without active episode observations."
+    ]
+  },
+  "versions": {
+    "numpy": "2.5.3",
+    "pandas": "3.0.6",
+    "lightgbm": "4.7.0",
+    "scikit-learn": "1.9.1"
+  }
+}

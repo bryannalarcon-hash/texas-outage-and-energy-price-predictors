@@ -102,6 +102,10 @@ function runMetadata(run, name, generated, now) {
   const issue = timestamp(run.issued_at_utc, `${name}.issued_at_utc`);
   const cutoff = timestamp(run.input_cutoff_utc, `${name}.input_cutoff_utc`);
   ensure(cutoff <= issue, `${name} cutoff must be no later than issue time.`);
+  if (run.forecast_origin_utc !== undefined) {
+    const origin = timestamp(run.forecast_origin_utc, `${name}.forecast_origin_utc`);
+    ensure(name === 'outage' && cutoff <= origin && origin <= issue, 'Outage forecast origin must fall between input cutoff and publication.');
+  }
   ensure(issue <= generated && issue <= now + 300000, `${name} issue time is in the future or after export time.`);
   number(run.max_age_hours, `${name}.max_age_hours`, 0.01, 168);
   ensure(Array.isArray(run.records), `${name}.records must be an array.`);
@@ -188,14 +192,19 @@ export function validatePayload(payload, geometry, wallClock = Date.now()) {
       const start = timestamp(interval.interval_start_utc, 'Outage interval start');
       const end = timestamp(interval.interval_end_utc, 'Outage interval end');
       ensure(end - start === 3600000 && start % 3600000 === 0, 'Outage intervals must be aligned one-hour intervals.');
-      ensure(index === 0 ? start >= Date.parse(outage.issued_at_utc) && start - Date.parse(outage.issued_at_utc) < 3600000 : start === Date.parse(outage.intervals[index - 1].interval_end_utc), 'Outage intervals must be contiguous from the issue hour.');
+      const origin = Date.parse(outage.forecast_origin_utc ?? outage.issued_at_utc);
+      ensure(index === 0 ? start >= origin && start - origin < 3600000 : start === Date.parse(outage.intervals[index - 1].interval_end_utc), 'Outage intervals must be contiguous from the forecast origin hour.');
     }
     timelines.outages = outage.intervals;
     for (const row of outage.records) {
       record(row, 'County row');
       ensure(ids.outages.has(row.county_fips), 'Unknown county FIPS.');
       ensure(!outageIndex.has(row.county_fips), 'Duplicate county record.');
-      ensure(['observed', 'unknown'].includes(row.coverage), 'County coverage must be observed or unknown.');
+      ensure(['observed', 'scenario', 'unknown'].includes(row.coverage), 'County coverage must be observed, scenario, or unknown.');
+      if (row.coverage === 'scenario') {
+        ensure(row.at_risk_assumed === true && row.active_outage === null, 'A conditional scenario must explicitly assume no active outage.');
+        partial = true;
+      }
       if (row.coverage === 'unknown') {
         ensure(row.p_first_start_by_hour === null && row.p_any_next_24h === null && row.active_outage === null, 'Unknown coverage cannot contain measured risk or an active scenario.');
         partial = true;
@@ -245,17 +254,48 @@ export function validatePayload(payload, geometry, wallClock = Date.now()) {
     const key = `${row.mode}|${row.region_id}|${row.interval_start_utc}`;
     ensure(!decisionIndex.has(key), 'Duplicate decision identity.');
     const primary = row.mode === 'energy' ? priceIndex.get(`${row.region_id}|${row.interval_start_utc}`) : outageIndex.get(row.region_id);
-    ensure(primary && (row.mode === 'energy' ? primary.availability === 'available' : primary.coverage === 'observed'), 'Decision is missing an available primary signal.');
+    ensure(primary && (row.mode === 'energy' ? primary.availability === 'available' : ['observed', 'scenario'].includes(primary.coverage)), 'Decision is missing an available primary signal.');
     if (row.relationship !== null) {
       record(row.relationship, 'relationship');
       const relationship = row.relationship;
       ensure(MODES.includes(relationship.mode) && relationship.mode !== row.mode && ids[relationship.mode].has(relationship.region_id), 'Invalid relationship geography.');
-      ensure(['verified_pair', 'documented_aggregate', 'illustrative_pair'].includes(relationship.method), 'Unknown relationship method.');
+      ensure(['verified_pair', 'documented_aggregate', 'illustrative_pair', 'representative_scenario'].includes(relationship.method), 'Unknown relationship method.');
       text(relationship.description, 'Relationship description');
       ensure(relationship.method !== 'illustrative_pair' || payload.kind === 'dummy', 'Illustrative relationships are allowed only in dummy data.');
+      ensure(relationship.method !== 'representative_scenario' || payload.decisions.scope === 'simulated_household', 'Representative pairings require an explicit simulated household scope.');
       if (relationship.method !== 'illustrative_pair') text(relationship.evidence, 'Relationship evidence', 1000);
     }
+    if (payload.decisions.scope === 'simulated_household') {
+      ensure(typeof row.locked === 'boolean', 'A simulated action must declare whether it is locked history.');
+      const planned = timestamp(row.planned_at_utc, 'Action plan time');
+      const basis = timestamp(row.basis_outage_issued_at_utc, 'Action outage basis');
+      ensure(basis <= planned && planned <= Date.parse(row.interval_start_utc) && planned <= generated, 'Action plan must precede its interval and use an already issued outage forecast.');
+      for (const field of ['charge_kwh', 'discharge_kwh']) number(row[field], field, -1e-7, 1.2500001);
+      for (const field of ['stored_energy_start_kwh', 'stored_energy_end_kwh', 'reserve_kwh']) number(row[field], field, -1e-7, 25.0000001);
+      ensure(typeof row.risk_window_covered === 'boolean', 'Risk-window coverage must be explicit.');
+      ensure(row.charge_kwh * row.discharge_kwh < 1e-7, 'A simulated battery cannot charge and discharge together.');
+      const expectedAction = row.charge_kwh > 1e-6 ? 'charge' : row.discharge_kwh > 1e-6 ? 'discharge' : 'hold';
+      ensure(row.action === expectedAction, 'Simulated action disagrees with its energy flows.');
+      const expectedEnergy = row.stored_energy_start_kwh + Math.sqrt(.9) * row.charge_kwh - row.discharge_kwh / Math.sqrt(.9);
+      ensure(Math.abs(row.stored_energy_end_kwh - expectedEnergy) < 1e-6 && row.stored_energy_end_kwh >= row.reserve_kwh - 1e-6, 'Simulated battery energy or reserve is inconsistent.');
+    }
     decisionIndex.set(key, row);
+  }
+  if (payload.decisions.scope === 'simulated_household') {
+    record(payload.decisions.battery, 'Simulated battery');
+    const terminal = payload.decisions.battery.initial_and_terminal_kwh;
+    number(terminal, 'Daily starting and ending inventory', 0, 25);
+    for (const zone of ids.energy) {
+      // UTC adjacency includes DST and locked history; missing actions stay unknown.
+      const rows = timelines.energy.map(interval => decisionIndex.get(`energy|${zone}|${interval.interval_start_utc}`));
+      for (const [index, row] of rows.entries()) {
+        if (!row) continue;
+        if (index === 0) ensure(Math.abs(row.stored_energy_start_kwh - terminal) < 1e-6, 'Simulated battery must start the day at its declared inventory.');
+        if (index === rows.length - 1) ensure(Math.abs(row.stored_energy_end_kwh - terminal) < 1e-6, 'Simulated battery must end the day at its declared inventory.');
+        const previous = rows[index - 1];
+        if (previous) ensure(Math.abs(previous.stored_energy_end_kwh - row.stored_energy_start_kwh) < 1e-6, 'Simulated battery energy must be continuous between adjacent intervals.');
+      }
+    }
   }
   if (available && decisionIndex.size < priceIndex.size + outageIndex.size * timelines.outages.length) partial = true;
   const stale = isStale(payload, timelines, now);
@@ -264,7 +304,7 @@ export function validatePayload(payload, geometry, wallClock = Date.now()) {
 }
 
 function isStale(payload, timelines, now) {
-  return [payload.price, payload.outage].some(run => run.status === 'available' && now - Date.parse(run.issued_at_utc) > run.max_age_hours * 3600000)
+  return [payload.price, payload.outage].some(run => run.status === 'available' && now - Date.parse(run.forecast_origin_utc ?? run.issued_at_utc) > run.max_age_hours * 3600000)
     || Object.values(timelines).some(timeline => timeline.length && now >= Date.parse(timeline.at(-1).interval_end_utc));
 }
 
