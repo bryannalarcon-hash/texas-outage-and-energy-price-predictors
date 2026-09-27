@@ -15,6 +15,7 @@ maximum first receipt. An unavailable source never fabricates a forecast.
 import argparse
 import csv
 import datetime as dt
+from functools import lru_cache
 import hashlib
 import io
 import json
@@ -80,7 +81,7 @@ class _PublicRedirect(urllib.request.HTTPRedirectHandler):
 
 def _get(url, now):
     _url_allowed(url)
-    request = urllib.request.Request(url, headers={"User-Agent": "BPC forecast demo/1.0"})
+    request = urllib.request.Request(url, headers={"User-Agent": "BPC forecast runner/1.0"})
     with urllib.request.build_opener(_PublicRedirect()).open(request, timeout=25) as response:
         _url_allowed(response.url)
         body = response.read(LIMIT + 1)
@@ -229,6 +230,17 @@ def _county_rows(counties):
     return result
 
 
+@lru_cache(maxsize=4)
+def _weather_risks(body, kind, year, counties):
+    with _zip(body):
+        pass
+    rows = [(*county, Point(county[2], county[3])) for county in counties]
+    with tempfile.NamedTemporaryFile(suffix=".zip") as source:
+        source.write(body)
+        source.flush()
+        return risk_by_county(source.name, kind, year, rows)
+
+
 def _weather_source(kind, origin, county_rows, now):
     prefix = "spc" if kind == "C" else "wpc"
     day = origin.date()
@@ -238,13 +250,8 @@ def _weather_source(kind, origin, county_rows, now):
     url = ("https://mesonet.agron.iastate.edu/cgi-bin/request/gis/outlooks.py"
            f"?d=1&type={kind}&sts={day.isoformat()}T00:00Z&ets={end.isoformat()}T00:00Z")
     body, receipt = cached or _get(url, now)
-    with _zip(body):
-        pass
     # Reuse the exact training-time polygon and publication-cutoff selector.
-    with tempfile.NamedTemporaryFile(suffix=".zip") as source:
-        source.write(body)
-        source.flush()
-        chosen, risks = risk_by_county(source.name, kind, day.year, county_rows)
+    chosen, risks = _weather_risks(body, kind, day.year, tuple(row[:4] for row in county_rows))
     product = chosen[day.isoformat()]
     metadata = {"source_id": prefix, **receipt, "status": "ready" if product else "unavailable"}
     if product:
@@ -317,7 +324,7 @@ def probe_sources(now=None, target_date=None, counties=None):
     return result
 
 
-def fetch_rtm_labels(day, now=None):
+def fetch_rtm_labels(day, now=None, allow_network=True):
     """Public daily RTM table, eight zones; only labels at least 48 hours old.
 
     The HTML has no DST-fold field, so transition days are explicitly skipped.
@@ -327,11 +334,15 @@ def fetch_rtm_labels(day, now=None):
     day = target_day(day, now)
     key = "rtm_" + day.isoformat()
     url = f"https://www.ercot.com/content/cdr/html/{day:%Y%m%d}_real_time_spp.html"
+    cached = None
     try:
         if len(hour_slots(day)) != 24:
             return {"status": "unsupported_dst", "rows": [], "url": url,
                     "message": "Daily HTML has no repeated-hour flag; this day is excluded from adaptive feedback"}
         cached = _cached(key)
+        if cached is None and not allow_network:
+            return {"status": "deferred", "rows": [], "url": url, "cache_hit": False,
+                    "message": "Only one uncached RTM label day is fetched per forecast run"}
         body, receipt = cached or _get(url, now)
         parser = FirstTable()
         parser.feed(body.decode("utf-8-sig"))
@@ -362,10 +373,11 @@ def fetch_rtm_labels(day, now=None):
             raise ValueError("RTM daily table is incomplete")
         if cached is None:
             _save(key, body, receipt)
-        return {"status": "ready", **receipt, "rows": rows, "label_delay_hours": 48,
+        return {"status": "ready", **receipt, "rows": rows, "cache_hit": cached is not None, "label_delay_hours": 48,
                 "price_version": "first observed public daily table; subsequent corrections not replayed"}
     except Exception as error:
-        return {"status": "error", "rows": [], "url": url, "message": f"{type(error).__name__}: {error}"}
+        return {"status": "error", "rows": [], "url": url, "cache_hit": cached is not None,
+                "message": f"{type(error).__name__}: {error}"}
 
 
 if __name__ == "__main__":

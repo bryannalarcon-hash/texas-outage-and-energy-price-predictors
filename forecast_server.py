@@ -16,11 +16,13 @@ from urllib.parse import urlsplit
 
 import forecast_sources as sources
 from forecast_models import price_forecast, outage_forecast
-from forecast_dispatch import decisions
+from forecast_dispatch import RULE_VERSION, decisions
 
 ROOT = Path(__file__).resolve().parent
 CACHE = ROOT / 'forecast_cache'
 UTC = timezone.utc
+OUTPUT_SCHEMA_VERSION = 1
+MODEL_RELEASE = hashlib.sha256((ROOT/'model_assets/manifest.json').read_bytes()).hexdigest()
 
 
 def now_utc():
@@ -54,7 +56,8 @@ def schedule_candidate(inputs):
     usable = inputs['dam']['status'] == 'ready' or inputs['weather']['status'] == 'ready'
     if not usable or not ready:
         return None
-    signature = [inputs['target_date'] if inputs['dam']['status'] == 'ready' else None, inputs['weather']['forecast_origin_utc'],
+    signature = [OUTPUT_SCHEMA_VERSION, MODEL_RELEASE, RULE_VERSION,
+                 inputs['target_date'] if inputs['dam']['status'] == 'ready' else None, inputs['weather']['forecast_origin_utc'],
                  [(s['source_id'],s.get('document_id'),s.get('product_id'),s.get('sha256')) for s in ready]]
     key = hashlib.sha256(json.dumps(signature,sort_keys=True).encode()).hexdigest()
     observed = max(datetime.fromisoformat(s['first_observed_at_utc']) for s in ready)
@@ -71,13 +74,16 @@ def source_status(inputs):
 def feedback(issued):
     """Join our pre-interval forecasts with actuals only after 48 elapsed hours."""
     joined = []
+    allow_network = True
     # Retain every ledger; use all available matured days, including catch-up after downtime.
     for path in sorted((CACHE/'predictions').glob('*.json')):
         saved = read_json(path,{})
         records = saved.get('records',[])
         if not records or datetime.fromisoformat(records[0]['interval_end_utc']) > issued-timedelta(hours=48):
             continue
-        actual = sources.fetch_rtm_labels(saved['target_date'], now=issued)
+        actual = sources.fetch_rtm_labels(saved['target_date'], now=issued, allow_network=allow_network)
+        if actual.get('cache_hit') is False:
+            allow_network = False
         if actual['status'] != 'ready':
             continue
         by_key = {(r['settlement_point'],r['valid_end_utc']):r for r in actual['rows']}
@@ -113,7 +119,7 @@ def build_bundle(inputs, issued, history=(), previous=None):
         rows = [{**r,'at_risk_assumed':True} for r in inputs['weather']['counties']]
         origin = inputs['weather']['forecast_origin_utc']
         outage = outage_forecast(rows,iso(issued),forecast_origin_utc=origin,input_cutoff_utc=origin)
-    return {'schema_version':1,'kind':'model','generated_at_utc':iso(issued),'price':price,'outage':outage,
+    return {'schema_version':OUTPUT_SCHEMA_VERSION,'kind':'model','generated_at_utc':iso(issued),'price':price,'outage':outage,
             'decisions':decisions(price,outage,previous=previous), 'source_receipts':inputs['sources']}
 
 

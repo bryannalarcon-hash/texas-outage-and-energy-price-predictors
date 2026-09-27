@@ -3,6 +3,8 @@ const status = document.getElementById('forecast-job-status');
 const sources = document.getElementById('forecast-source-list');
 let version = null;
 let polling = false;
+let refreshing = false;
+let epoch = 0;
 let apiAvailable = true;
 let pollDelay = 15000;
 
@@ -34,10 +36,11 @@ function render(data) {
 }
 
 async function poll() {
-  if (polling) return;
+  if (polling || refreshing) { window.setTimeout(poll, pollDelay); return; }
   polling = true;
-  try { render(await request('api/forecast/status')); apiAvailable = true; }
-  catch (error) { status.textContent = error.message; button.disabled = error.status === 404 || error.status === 405; apiAvailable = false; }
+  const current = epoch;
+  try { const data = await request('api/forecast/status'); if (current === epoch) { render(data); apiAvailable = true; } }
+  catch (error) { if (current === epoch) { status.textContent = error.message; button.disabled = error.status === 404 || error.status === 405; apiAvailable = false; } }
   finally {
     polling = false;
     window.setTimeout(poll, apiAvailable ? pollDelay : 60000);
@@ -45,9 +48,12 @@ async function poll() {
 }
 
 button.addEventListener('click', async () => {
+  const current = ++epoch;
+  refreshing = true;
   button.disabled = true;
   status.textContent = 'Pulling published prices and weather outlooks…';
-  try { render(await request('api/forecast/refresh', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})); }
-  catch (error) { status.textContent = error.message; button.disabled = error.status === 404 || error.status === 405; }
+  try { const data = await request('api/forecast/refresh', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); if (current === epoch) render(data); }
+  catch (error) { if (current === epoch) { status.textContent = error.message; button.disabled = error.status === 404 || error.status === 405; } }
+  finally { refreshing = false; }
 });
 poll();

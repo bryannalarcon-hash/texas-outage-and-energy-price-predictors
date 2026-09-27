@@ -291,11 +291,16 @@ export function validatePayload(payload, geometry, wallClock = Date.now()) {
   }
   if (payload.decisions.scope === 'simulated_household') {
     record(payload.decisions.battery, 'Simulated battery');
-    const terminal = payload.decisions.battery.initial_and_terminal_kwh;
+    const battery = payload.decisions.battery;
+    for (const field of ['capacity_kwh', 'power_kw', 'initial_and_terminal_kwh']) number(battery[field], field, 0.01, 1000);
+    number(battery.round_trip_efficiency, 'round_trip_efficiency', 0.01, 1);
+    const terminal = battery.initial_and_terminal_kwh;
     number(terminal, 'Daily starting and ending inventory', 0, 25);
     for (const zone of ids.energy) {
       // UTC adjacency includes DST and locked history; missing actions stay unknown.
       const rows = timelines.energy.map(interval => decisionIndex.get(`energy|${zone}|${interval.interval_start_utc}`));
+      const firstUnlocked = rows.findIndex(row => row && !row.locked);
+      const planStart = firstUnlocked < 0 ? null : rows[firstUnlocked].stored_energy_start_kwh;
       for (const [index, row] of rows.entries()) {
         if (!row) continue;
         const local = parts(row.interval_start_utc);
@@ -303,7 +308,30 @@ export function validatePayload(payload, geometry, wallClock = Date.now()) {
         if (index === rows.length - 1) ensure(Math.abs(row.stored_energy_end_kwh - terminal) < 1e-6, 'Simulated battery must end the day at its declared inventory.');
         const previous = rows[index - 1];
         if (previous) ensure(Math.abs(previous.stored_energy_end_kwh - row.stored_energy_start_kwh) < 1e-6, 'Simulated battery energy must be continuous between adjacent intervals.');
+        if (row.locked) continue;
+        ensure(index >= firstUnlocked && row.relationship?.mode === 'outages' && row.relationship.method === 'representative_scenario', 'An unlocked simulated action needs its representative county scenario.');
+        ensure(row.basis_outage_issued_at_utc === outage.issued_at_utc, 'An unlocked simulated action must use the published outage run.');
+        const county = outageIndex.get(row.relationship.region_id);
+        ensure(county && Array.isArray(county.p_first_start_by_hour), 'The representative county needs first-onset probabilities.');
+        const boundary = Date.parse(row.interval_start_utc) + 900000;
+        const offset = (boundary - Date.parse(outage.forecast_origin_utc ?? outage.issued_at_utc)) / 3600000;
+        const covered = offset >= 0 && offset + 6 <= 24;
+        let mass = 0;
+        if (covered) for (let hour = 0; hour < 24; hour++) {
+          mass += county.p_first_start_by_hour[hour] * Math.max(0, Math.min(offset + 6, hour + 1) - Math.max(offset, hour));
+        }
+        const target = 5 + (covered ? 10 * Math.min(1, mass / .25) : 0);
+        const reachable = planStart + Math.sqrt(battery.round_trip_efficiency) * battery.power_kw * .25 * (index - firstUnlocked + 1);
+        ensure(row.risk_window_covered === covered && Math.abs(row.reserve_kwh - Math.min(target, reachable)) < 1e-6, 'Simulated battery reserve disagrees with its representative county risk.');
       }
+    }
+    for (const row of payload.decisions.records.filter(row => row.mode === 'outages' && !row.locked)) {
+      ensure(row.relationship?.mode === 'energy' && row.relationship.method === 'representative_scenario', 'An unlocked county action needs its representative energy plan.');
+      const energy = decisionIndex.get(`energy|${row.relationship.region_id}|${row.interval_start_utc}`);
+      if (!energy) continue;
+      ensure(energy && energy.relationship?.region_id === row.region_id, 'Representative county and energy actions must be paired.');
+      for (const field of ['charge_kwh', 'discharge_kwh', 'stored_energy_start_kwh', 'stored_energy_end_kwh', 'reserve_kwh']) ensure(Math.abs(row[field] - energy[field]) < 1e-6, 'Representative county and energy actions disagree.');
+      ensure(row.risk_window_covered === energy.risk_window_covered && row.basis_outage_issued_at_utc === energy.basis_outage_issued_at_utc, 'Representative county and energy risk bases disagree.');
     }
   }
   if (available && decisionIndex.size < priceIndex.size + outageIndex.size * timelines.outages.length) partial = true;

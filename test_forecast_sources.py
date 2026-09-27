@@ -144,6 +144,17 @@ class ForecastSourcesTest(unittest.TestCase):
     def test_actual_weather_selector_rejects_late_and_short_horizon_products(self):
         check_outlook_cutoffs()
 
+    def test_unchanged_weather_archive_is_parsed_once(self):
+        body=dam_zip(self.day)
+        selected={self.day.isoformat():("2026-09-27T12:00:00Z","2026-09-27T12:00:00Z","2026-09-28T12:00:00Z")}
+        risks={self.day.isoformat():[2]}
+        counties=(("48113","Dallas",-96.7,32.7),)
+        source._weather_risks.cache_clear()
+        with patch.object(source,'risk_by_county',return_value=(selected,risks)) as parse:
+            self.assertEqual(source._weather_risks(body,'C',self.day.year,counties),(selected,risks))
+            self.assertEqual(source._weather_risks(body,'C',self.day.year,counties),(selected,risks))
+        parse.assert_called_once()
+
     def test_utc_morning_origin_stays_on_previous_day(self):
         with patch.object(source, "_dam", return_value={"status": "unavailable", "rows": []}), \
                 patch.object(source, "_weather_source", side_effect=self.weather):
@@ -171,6 +182,9 @@ class ForecastSourcesTest(unittest.TestCase):
         self.assertEqual(len(result["rows"]), 14 * 4 * 8)  # 19Z = 14 local hours, two days later
         self.assertTrue(all(source.instant(r["valid_end_utc"]) + dt.timedelta(hours=48) <= self.now for r in result["rows"]))
         self.assertEqual(source.fetch_rtm_labels("2026-11-01", self.now)["status"], "unsupported_dst")
+        with patch.object(source, "_get") as download:
+            self.assertEqual(source.fetch_rtm_labels("2026-09-24", self.now, allow_network=False)["status"], "deferred")
+            download.assert_not_called()
 
 
 if __name__ == "__main__":

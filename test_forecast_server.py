@@ -85,6 +85,14 @@ class ForecastServerTests(unittest.TestCase):
         partial['decisions']['records']=[]
         self.assertEqual(server.publish(partial,self.root/'empty-plan.json')['decisions'],0)
 
+    def test_publication_recomputes_reserve_from_county_risk(self):
+        bundle=server.build_bundle(self.inputs,self.issue)
+        county=next(r for r in bundle['outage']['records'] if r['county_fips']=='48201')
+        county['p_first_start_by_hour']=[0.]*18+[1.]+[0.]*5
+        county['p_any_next_24h']=1.
+        with self.assertRaisesRegex(ValueError,'reserve disagrees'):
+            server.publish(bundle,self.root/'output.json')
+
     def test_revision_cannot_skip_its_new_delay(self):
         service=server.ForecastService(self.root/'output.json')
         old_key,_=server.schedule_candidate(self.inputs)
@@ -129,6 +137,11 @@ class ForecastServerTests(unittest.TestCase):
         first=server.schedule_candidate(inputs)
         inputs['target_date']='2025-07-02'
         self.assertEqual(first,server.schedule_candidate(inputs))
+
+    def test_schedule_key_includes_model_release(self):
+        first=server.schedule_candidate(self.inputs)
+        with patch.object(server,'MODEL_RELEASE','next-release'):
+            self.assertNotEqual(first[0],server.schedule_candidate(self.inputs)[0])
 
     def test_partial_network_failure_keeps_prior_export(self):
         output=self.root/'output.json'; output.write_text('{}')
@@ -211,6 +224,18 @@ class ForecastServerTests(unittest.TestCase):
         server.atomic_json(path,{'target_date':'2025-06-27','issued_at_utc':'2025-06-27T23:45:00Z','records':[row]})
         with patch.object(server.sources,'fetch_rtm_labels',return_value=labels):
             self.assertEqual(server.feedback(self.issue),[])  # Exact-start forecasts remain displayable, not calibration inputs.
+
+    def test_feedback_allows_one_uncached_label_fetch_per_run(self):
+        row={'settlement_point':'LZ_NORTH','interval_end_utc':'2025-06-25T00:00:00Z'}
+        for day in ('2025-06-24','2025-06-25','2025-06-26'):
+            server.atomic_json(server.CACHE/f'predictions/{day}.json',{'target_date':day,'issued_at_utc':'2025-06-23T00:00:00Z','records':[row]})
+        calls=[]
+        def labels(day, now, allow_network):
+            calls.append(allow_network)
+            return {'status':'error' if allow_network else 'deferred','rows':[],'cache_hit':False}
+        with patch.object(server.sources,'fetch_rtm_labels',side_effect=labels):
+            self.assertEqual(server.feedback(self.issue),[])
+        self.assertEqual(calls,[True,False,False])
 
     def test_refresh_http_rejects_cross_origin_and_arbitrary_input(self):
         service=server.ForecastService(self.root/'output.json')

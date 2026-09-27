@@ -100,7 +100,7 @@ def decisions(price, outage, previous=None):
                       'action': action, 'strength': float(min(1., max(c[k], d[k])/(POWER*.25))),
                       'reserve_constraint': bool(constrained), 'reason_codes': reasons, 'relationship': relation,
                       'charge_kwh': float(c[k]), 'discharge_kwh': float(d[k]), 'stored_energy_start_kwh': float(soc[k]),
-                      'stored_energy_end_kwh': float(soc[k+1]), 'reserve_kwh': float(floors[k+1]), 'risk_window_covered': bool(covered[i]),
+                      'stored_energy_end_kwh': float(soc[k+1]), 'reserve_kwh': float(floors[k+1]), 'risk_window_covered': bool(covered[i+1]),
                       'locked': False, 'planned_at_utc':issued.isoformat().replace('+00:00','Z'),
                       'basis_outage_issued_at_utc':outage['issued_at_utc']}
             result['records'].append(record)
