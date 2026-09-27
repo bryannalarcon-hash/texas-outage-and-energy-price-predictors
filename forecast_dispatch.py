@@ -58,7 +58,7 @@ def solve(prices, targets, initial=TERMINAL):
 def decisions(price, outage, previous=None):
     result = {'rule_version': RULE_VERSION, 'is_demo': False, 'scope': 'simulated_household', 'records': [],
               'battery': {'capacity_kwh': CAPACITY, 'power_kw': POWER, 'round_trip_efficiency': .9, 'initial_and_terminal_kwh': TERMINAL, 'household_load_kw': 1.25},
-              'limitations': 'Representative counties only; no address mapping or device telemetry. Missing six-hour risk windows use a 5 kWh reserve. No hardware control.'}
+              'limitations': 'Representative counties only; no address mapping or device telemetry. A new simulation assumes 15 kWh at its first interval; updates carry prior simulated energy. Missing six-hour risk windows use a 5 kWh reserve. No hardware control.'}
     if price['status'] != 'available' or outage['status'] != 'available':
         return result
     counties = {r['county_fips']: r for r in outage['records']}
@@ -81,7 +81,8 @@ def decisions(price, outage, previous=None):
         past = sum(t < issued for t in times)
         if past and not all((zone,r['interval_start_utc']) in old for r in rows[:past]):
             continue  # No device state or prior simulation: do not invent already-executed actions.
-        initial = old[(zone,rows[past-1]['interval_start_utc'])]['stored_energy_end_kwh'] if past else TERMINAL
+        initial = (old[(zone,rows[past-1]['interval_start_utc'])]['stored_energy_end_kwh'] if past else
+                   old.get((zone,rows[0]['interval_start_utc']),{}).get('stored_energy_start_kwh',TERMINAL))
         if past < len(rows):
             c, d, soc, floors = solve([r['rtm_mean_usd_mwh'] for r in rows[past:]], targets[past:], initial=initial)
         for i, row in enumerate(rows):

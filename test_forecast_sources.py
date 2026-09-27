@@ -117,6 +117,30 @@ class ForecastSourcesTest(unittest.TestCase):
         self.assertEqual((county["spc_risk"], county["spc_available"]), (-1, 0))
         self.assertIsNone(result["inputs_available_at_utc"])
 
+    def test_today_fallback_and_next_day_publication(self):
+        today = self.day - dt.timedelta(days=1)
+        unavailable = {"source_id": "dam", "status": "unavailable", "rows": []}
+        ready = {"source_id": "dam", "status": "ready", "document_id": "123", "rows": [],
+                 "first_observed_at_utc": "2026-09-27T18:59:00Z"}
+        with patch.object(source, "_dam", side_effect=lambda day, now: ready if day == today else unavailable), \
+                patch.object(source, "_weather_source", side_effect=self.weather):
+            result = source.pull_inputs(self.now, counties=self.counties)
+            self.assertEqual((result['target_date'], result['pending_day_ahead_date']), ('2026-09-27', '2026-09-28'))
+            self.assertEqual(result['status'], 'ready')
+            explicit = source.pull_inputs(self.now, self.day, self.counties)
+            self.assertEqual(explicit['target_date'], '2026-09-28')
+            self.assertEqual(explicit['dam']['status'], 'unavailable')
+        with patch.object(source, "_dam", return_value=ready) as download, \
+                patch.object(source, "_weather_source", side_effect=self.weather):
+            tomorrow = source.pull_inputs(self.now, counties=self.counties)
+            self.assertEqual(tomorrow['target_date'], '2026-09-28')
+            self.assertIsNone(tomorrow['pending_day_ahead_date'])
+            download.assert_called_once()
+        with patch.object(source, "_dam", return_value=unavailable) as download, \
+                patch.object(source, "_weather_source", side_effect=self.weather):
+            source.pull_inputs('2026-09-28T04:45:01Z', counties=self.counties)
+            download.assert_called_once()  # No wholly future quarter remains in today's curve.
+
     def test_actual_weather_selector_rejects_late_and_short_horizon_products(self):
         check_outlook_cutoffs()
 

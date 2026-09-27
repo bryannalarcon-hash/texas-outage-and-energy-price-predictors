@@ -23,6 +23,10 @@ try {
   assert.ok(state.last_success_utc);
   const live=await (await page.request.get(`${base}data/model-output.json`)).json();
   assert.equal(live.kind,'model');
+  if (process.env.BPC_EXPECT_PRICE_DATE) {
+    assert.equal(live.price.status,'available');
+    assert.equal(live.price.target_date,process.env.BPC_EXPECT_PRICE_DATE);
+  }
   assert.equal(live.outage.status,'available');
   assert.ok(live.outage.records.some(r=>r.coverage==='scenario'));
   await page.locator('button[data-mode="outages"]').click();
@@ -35,6 +39,22 @@ try {
   await page.setViewportSize({width:390,height:844});
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.screenshot({path:new URL('forecast-live-outages-mobile.png',output).pathname,fullPage:true});
+  if (live.price.status === 'available') {
+    await page.setViewportSize({width:1440,height:1050});
+    await page.locator('button[data-mode="energy"]').click();
+    await page.locator('#region-select').selectOption('LZ_HOUSTON');
+    assert.match(await page.locator('#panel-content').innerText(),/Mean: adaptive DAM \+ E2/);
+    assert.equal(await page.locator('#interval-select option').count(),new Set(live.price.records.map(r=>r.interval_start_utc)).size);
+    assert.ok(live.price.records.every(r=>r.interval_start_utc>=live.price.issued_at_utc));
+    await page.waitForFunction(()=>!document.body.classList.contains('mode-flow'));
+    await page.evaluate(()=>{document.activeElement?.blur(); scrollTo(0,0);});
+    await page.screenshot({path:new URL('forecast-live-energy-desktop.png',output).pathname,fullPage:true});
+    await page.setViewportSize({width:390,height:844});
+    await page.locator('.signal-details > summary').click();
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    await page.evaluate(()=>{document.activeElement?.blur(); scrollTo(0,0);});
+    await page.screenshot({path:new URL('forecast-live-energy-mobile.png',output).pathname,fullPage:true});
+  }
   // Optional genuine historical bundle verifies the price→plan display without changing the live export.
   if(process.env.BPC_REPLAY_EXPORT) {
     const replay=await readFile(process.env.BPC_REPLAY_EXPORT,'utf8');

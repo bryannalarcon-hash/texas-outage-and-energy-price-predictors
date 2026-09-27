@@ -393,6 +393,7 @@ function metadata(selection) {
     if (run.status === 'available') {
       rows.push([`${name} published`, formatTime(run.issued_at_utc)], [`${name} input cutoff`, formatTime(run.input_cutoff_utc)], [`${name} model`, run.model_version], [`${name} expires after`, `${run.max_age_hours} hours from ${run.forecast_origin_utc ? 'forecast origin' : 'issue'}`]);
       if (run.forecast_origin_utc) rows.push([`${name} forecast origin`, formatTime(run.forecast_origin_utc)]);
+      if (run.horizon === 'remaining_day') rows.push(['Price horizon', 'Remaining intervals today; issued now from the published DAM curve']);
       if (run.provenance?.blend?.adaptation_status) rows.push(['Blend calibration', run.provenance.blend.adaptation_status === 'frozen_history' ? 'Historical calibration; waiting for new forecasts with delayed actual prices' : 'Updated with eligible delayed actual prices']);
     }
     else rows.push([`${name} model`, run.reason]);

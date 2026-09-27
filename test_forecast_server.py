@@ -160,6 +160,36 @@ class ForecastServerTests(unittest.TestCase):
             for a,b in zip(rows,rows[1:]): self.assertAlmostEqual(a['stored_energy_end_kwh'],b['stored_energy_start_kwh'])
         self.assertEqual(server.publish(updated,self.root/'midday.json')['prices'],768)
 
+    def test_same_day_startup_and_refresh_preserve_future_energy(self):
+        inputs = copy.deepcopy(self.inputs)
+        inputs['weather']['forecast_origin_utc'] = '2025-07-01T12:00:00Z'
+        inputs['pending_day_ahead_date'] = '2025-07-02'
+        issued = datetime(2025,7,1,15,1,tzinfo=timezone.utc)
+        first = server.build_bundle(inputs,issued)
+        self.assertEqual(first['price']['horizon'], 'remaining_day')
+        self.assertEqual(first['price']['issued_at_utc'], server.iso(issued))
+        self.assertEqual(min(r['interval_start_utc'] for r in first['price']['records']), '2025-07-01T15:15:00Z')
+        self.assertEqual(server.publish(first,self.root/'startup.json')['prices'], 55*8)
+        output=self.root/'startup.json'
+        original=output.read_bytes()
+        missing_weather=copy.deepcopy(inputs)
+        missing_weather['weather']['status']='unavailable'
+        service=server.ForecastService(output)
+        with patch.object(server.sources,'pull_inputs',return_value=missing_weather), patch.object(server,'now_utc',return_value=issued+timedelta(minutes=5)), patch.object(server,'feedback',return_value=[]):
+            service.run()
+        self.assertEqual(output.read_bytes(),original)
+        self.assertIn('simulated battery state',service.status()['last_error'])
+        energy = [r for r in first['decisions']['records'] if r['mode']=='energy']
+        self.assertEqual(len(energy),55*4)
+        carried = next(r for r in energy if r['region_id']=='LZ_HOUSTON' and abs(r['stored_energy_start_kwh']-15)>0.1)
+        later = datetime.fromisoformat(carried['interval_start_utc'])-timedelta(minutes=1)
+        updated = server.build_bundle(inputs,later,previous=first)
+        for zone in ['LZ_HOUSTON','LZ_NORTH','LZ_SOUTH','LZ_WEST']:
+            row = next(r for r in updated['decisions']['records'] if r['mode']=='energy' and r['region_id']==zone)
+            old = next(r for r in energy if r['region_id']==zone and r['interval_start_utc']==row['interval_start_utc'])
+            self.assertAlmostEqual(row['stored_energy_start_kwh'],old['stored_energy_start_kwh'])
+        self.assertGreater(server.publish(updated,self.root/'refresh.json')['decisions'],0)
+
     def test_published_automatic_key_recovers_after_a_crash(self):
         key,_=server.schedule_candidate(self.inputs)
         output=self.root/'output.json'
@@ -178,6 +208,9 @@ class ForecastServerTests(unittest.TestCase):
         with patch.object(server.sources,'fetch_rtm_labels',return_value=labels):
             history=server.feedback(self.issue)
         self.assertEqual(history[0]['actual_available_at_utc'],'2025-06-30T22:00:00Z')
+        server.atomic_json(path,{'target_date':'2025-06-27','issued_at_utc':'2025-06-27T23:45:00Z','records':[row]})
+        with patch.object(server.sources,'fetch_rtm_labels',return_value=labels):
+            self.assertEqual(server.feedback(self.issue),[])  # Exact-start forecasts remain displayable, not calibration inputs.
 
     def test_refresh_http_rejects_cross_origin_and_arbitrary_input(self):
         service=server.ForecastService(self.root/'output.json')

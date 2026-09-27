@@ -131,6 +131,10 @@ export function validatePayload(payload, geometry, wallClock = Date.now()) {
   if (price.status === 'available') {
     text(price.target_date, 'price.target_date', 10);
     ensure(/^\d{4}-\d{2}-\d{2}$/.test(price.target_date), 'Invalid target date.');
+    const horizon = price.horizon === undefined ? 'full_day' : price.horizon;
+    ensure(['full_day', 'remaining_day'].includes(horizon), 'Unsupported price horizon.');
+    const issue = Date.parse(price.issued_at_utc);
+    if (horizon === 'remaining_day') ensure(dayOf(issue) === price.target_date, 'Remaining-day prices must be issued during their target Central operating day.');
     ensure(price.records.length > 0 && price.records.length <= 800, 'Price records must contain 1–800 rows.');
     const byStart = new Map();
     const damByHour = new Map();
@@ -164,18 +168,22 @@ export function validatePayload(payload, geometry, wallClock = Date.now()) {
       byStart.set(start, row);
     }
     const ordered = [...byStart.keys()].sort((first, second) => first - second);
-    ensure([92, 96, 100].includes(ordered.length), 'An energy day must have 92, 96, or 100 intervals.');
     const first = parts(ordered[0]);
     const after = parts(ordered.at(-1) + 900000);
-    ensure(first.hour === '00' && first.minute === '00' && after.hour === '00' && after.minute === '00' && dayOf(ordered.at(-1) + 900000) !== price.target_date, 'Energy timeline must span the full Central operating day.');
-    const seenLocal = new Set();
+    ensure(after.hour === '00' && after.minute === '00' && dayOf(ordered.at(-1) + 900000) !== price.target_date, 'Energy timeline must end at the next Central midnight.');
+    if (horizon === 'remaining_day') {
+      ensure(ordered[0] === Math.ceil(issue / 900000) * 900000, 'Remaining-day prices must begin at the first aligned interval at or after issue.');
+    } else {
+      ensure([92, 96, 100].includes(ordered.length), 'An energy day must have 92, 96, or 100 intervals.');
+      ensure(first.hour === '00' && first.minute === '00', 'Energy timeline must span the full Central operating day.');
+    }
     for (const [index, start] of ordered.entries()) {
       ensure(index === 0 || start - ordered[index - 1] === 900000, 'Energy timeline contains a gap.');
       const local = parts(start);
-      const key = `${local.hour}:${local.minute}`;
+      const previousHour = parts(start - 3600000);
+      const repeated = dayOf(start - 3600000) === price.target_date && local.hour === previousHour.hour && local.minute === previousHour.minute;
       const row = byStart.get(start);
-      ensure(row.repeated_hour_flag === (seenLocal.has(key) ? 'Y' : 'N'), 'Incorrect DST repeated_hour_flag.');
-      seenLocal.add(key);
+      ensure(row.repeated_hour_flag === (repeated ? 'Y' : 'N'), 'Incorrect DST repeated_hour_flag.');
       timelines.energy.push({ interval_start_utc: row.interval_start_utc, interval_end_utc: row.interval_end_utc });
     }
     if (price.records.length !== ordered.length * ids.energy.size) partial = true;
@@ -290,7 +298,8 @@ export function validatePayload(payload, geometry, wallClock = Date.now()) {
       const rows = timelines.energy.map(interval => decisionIndex.get(`energy|${zone}|${interval.interval_start_utc}`));
       for (const [index, row] of rows.entries()) {
         if (!row) continue;
-        if (index === 0) ensure(Math.abs(row.stored_energy_start_kwh - terminal) < 1e-6, 'Simulated battery must start the day at its declared inventory.');
+        const local = parts(row.interval_start_utc);
+        if (index === 0 && local.hour === '00' && local.minute === '00') ensure(Math.abs(row.stored_energy_start_kwh - terminal) < 1e-6, 'Simulated battery must start the day at its declared inventory.');
         if (index === rows.length - 1) ensure(Math.abs(row.stored_energy_end_kwh - terminal) < 1e-6, 'Simulated battery must end the day at its declared inventory.');
         const previous = rows[index - 1];
         if (previous) ensure(Math.abs(previous.stored_energy_end_kwh - row.stored_energy_start_kwh) < 1e-6, 'Simulated battery energy must be continuous between adjacent intervals.');

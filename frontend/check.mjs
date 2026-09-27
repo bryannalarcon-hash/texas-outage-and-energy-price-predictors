@@ -5,7 +5,7 @@ import {
   validateGeometry, validatePayload, initialState, transition, snapshot, readSnapshot,
   viewSelection, unavailablePayload
 } from './core.mjs';
-import { geometry, dummy, now, modelPayload } from './test-data.mjs';
+import { geometry, dummy, now, modelPayload, priceDay } from './test-data.mjs';
 
 const context = { geometry, now };
 const step = (state, event) => transition(state, event, context);
@@ -355,4 +355,60 @@ test('contract: conditional county scenarios cannot impersonate observed outage 
   assert.doesNotThrow(() => validate(payload));
   row.at_risk_assumed = false;
   assert.throws(() => validate(payload), /assum/);
+});
+
+function remainingDay(date = '2025-07-01', start = '2025-07-01T05:00:00Z', count = 96, issue = '2025-07-01T18:07:13Z') {
+  const price = priceDay(date, start, count);
+  Object.assign(price, { horizon: 'remaining_day', issued_at_utc: issue, input_cutoff_utc: issue });
+  price.records = price.records.filter(row => Date.parse(row.interval_start_utc) >= Math.ceil(Date.parse(issue) / 900000) * 900000);
+  return { ...emptyPayload(), generated_at_utc: issue, price };
+}
+
+test('contract: remaining-day prices start at the next quarter, retain midnight, and allow partial zones', () => {
+  const payload = remainingDay();
+  const data = validate(payload, Date.parse(payload.generated_at_utc));
+  assert.equal(data.timelines.energy.length, 43);
+  assert.equal(data.timelines.energy[0].interval_start_utc, '2025-07-01T18:15:00Z');
+  assert.equal(data.timelines.energy.at(-1).interval_end_utc, '2025-07-02T05:00:00Z');
+  const partial = structuredClone(payload);
+  partial.price.records.shift();
+  assert.equal(validate(partial, Date.parse(payload.generated_at_utc)).partial, true);
+  const aligned = remainingDay(undefined, undefined, undefined, '2025-07-01T18:15:00Z');
+  assert.equal(validate(aligned, Date.parse(aligned.generated_at_utc)).timelines.energy[0].interval_start_utc, aligned.generated_at_utc);
+});
+
+test('contract: remaining-day prices reject backdating, missing edges, gaps, wrong issue days and unknown horizons', () => {
+  const original = remainingDay();
+  for (const [mutate, message] of [
+    [p => { p.price.records.unshift(priceDay('2025-07-01', '2025-07-01T05:00:00Z', 96).records.find(r => r.interval_start_utc === '2025-07-01T18:00:00Z')); }, /precedes issue/],
+    [p => { p.price.records = p.price.records.filter(r => r.interval_start_utc !== '2025-07-01T18:15:00Z'); }, /first aligned/],
+    [p => { p.price.records = p.price.records.filter(r => r.interval_start_utc !== '2025-07-01T19:00:00Z'); }, /gap/],
+    [p => { p.price.records = p.price.records.filter(r => r.interval_start_utc !== '2025-07-02T04:45:00Z'); }, /midnight/],
+    [p => { p.price.issued_at_utc = p.price.input_cutoff_utc = '2025-07-01T04:59:59Z'; }, /target Central operating day/],
+    [p => { delete p.price.horizon; }, /92, 96, or 100/],
+    [p => { p.price.horizon = 'arbitrary'; }, /Unsupported price horizon/]
+  ]) {
+    const payload = structuredClone(original);
+    mutate(payload);
+    assert.throws(() => validate(payload, Date.parse(payload.generated_at_utc)), message);
+  }
+  const empty = remainingDay(undefined, undefined, undefined, '2025-07-02T04:45:01Z');
+  assert.throws(() => validate(empty, Date.parse(empty.generated_at_utc)), /1–800 rows/);
+});
+
+test('contract: remaining-day DST horizons preserve elapsed intervals and the true repeated-hour flag', () => {
+  for (const [date, start, count, issue, expected, flag] of [
+    ['2026-03-08', '2026-03-08T06:00:00Z', 92, '2026-03-08T07:50:00Z', 84, 'N'],
+    ['2026-11-01', '2026-11-01T05:00:00Z', 100, '2026-11-01T07:10:00Z', 91, 'Y']
+  ]) {
+    const payload = remainingDay(date, start, count, issue);
+    const data = validate(payload, Date.parse(issue));
+    assert.equal(data.timelines.energy.length, expected);
+    assert.equal(payload.price.records[0].repeated_hour_flag, flag);
+    const full = { ...payload, price: priceDay(date, start, count) };
+    assert.equal(validate(full, Date.parse(issue)).timelines.energy.length, count);
+    const first = payload.price.records[0].interval_start_utc;
+    for (const row of payload.price.records) if (row.interval_start_utc === first) row.repeated_hour_flag = flag === 'Y' ? 'N' : 'Y';
+    assert.throws(() => validate(payload, Date.parse(issue)), /Incorrect DST/);
+  }
 });

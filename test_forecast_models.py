@@ -17,6 +17,7 @@ class FrozenInferenceChecks(unittest.TestCase):
         f = self.fixture
         price = model.price_forecast(f['hourly_dam_rows'], f['price_issued_at_utc'])
         expected = {(r['settlement_point'], r['interval_start_utc']): r for r in f['expected_price']}
+        self.assertEqual(price['horizon'], 'full_day')
         self.assertEqual(len(price['records']), 768)
         for row in price['records']:
             old = expected[(row['settlement_point'], row['interval_start_utc'])]
@@ -54,6 +55,41 @@ class FrozenInferenceChecks(unittest.TestCase):
             self.assertEqual(sum(r['repeated_hour_flag'] == 'Y' for r in result['records']), 4 if count == 100 else 0)
             self.assertEqual(result['records'][0]['interval_start_utc'], model.stamp(start))
             self.assertEqual(result['records'][-1]['interval_end_utc'], model.stamp(end))
+            # Cropping across either clock change uses UTC and keeps the exact
+            # predictions produced with the original full-day DAM context.
+            issue = start.astimezone(model.UTC) + timedelta(hours=1, minutes=50)
+            cropped = model.price_forecast(rows, model.stamp(issue))
+            future = [r for r in result['records'] if model.utc(r['interval_start_utc']) >= issue]
+            self.assertEqual(cropped['horizon'], 'remaining_day')
+            self.assertEqual(cropped['records'], future)
+            self.assertEqual(cropped['records'][0]['interval_start_utc'], model.stamp(start.astimezone(model.UTC) + timedelta(hours=2)))
+            self.assertEqual(sum(r['repeated_hour_flag'] == 'Y' for r in cropped['records']), 4 if count == 100 else 0)
+
+    def test_same_day_crop_preserves_actual_issue_and_complete_dam_features(self):
+        f = self.fixture
+        original = model.price_forecast(f['hourly_dam_rows'], f['price_issued_at_utc'])
+        for issue, expected_start in [('2025-07-01T13:07:01Z', '2025-07-01T13:15:00Z'),
+                                      ('2025-07-01T13:15:00Z', '2025-07-01T13:15:00Z')]:
+            result = model.price_forecast(f['hourly_dam_rows'], issue, input_cutoff_utc=f['price_issued_at_utc'],
+                                          blend_state=original['provenance']['blend'])
+            self.assertEqual(result['horizon'], 'remaining_day')
+            self.assertEqual(result['issued_at_utc'], issue)
+            self.assertEqual(result['input_cutoff_utc'], f['price_issued_at_utc'])
+            self.assertEqual(result['records'][0]['interval_start_utc'], expected_start)
+            self.assertEqual(result['records'], [r for r in original['records'] if r['interval_start_utc'] >= expected_start])
+            self.assertEqual(result['records'][-1]['interval_end_utc'], '2025-07-02T05:00:00Z')
+        # Removing an already elapsed hour would change daily extrema/neighbors.
+        with self.assertRaises(ValueError):
+            model.price_forecast(f['hourly_dam_rows'][1:], '2025-07-01T13:07:01Z')
+
+    def test_last_aligned_quarter_is_allowed_and_later_issues_are_rejected(self):
+        result = model.price_forecast(self.fixture['hourly_dam_rows'], '2025-07-02T04:45:00Z')
+        self.assertEqual(len(result['records']), 8)
+        self.assertTrue(all(r['interval_start_utc'] == '2025-07-02T04:45:00Z' for r in result['records']))
+        self.assertTrue(all(r['interval_end_utc'] == '2025-07-02T05:00:00Z' for r in result['records']))
+        for issue in ['2025-07-02T04:45:01Z', '2025-07-02T05:00:00Z', '2025-07-03T12:00:00Z']:
+            with self.assertRaises(ValueError):
+                model.price_forecast(self.fixture['hourly_dam_rows'], issue)
 
     def test_incomplete_and_duplicate_dam_are_rejected(self):
         rows = self.fixture['hourly_dam_rows']

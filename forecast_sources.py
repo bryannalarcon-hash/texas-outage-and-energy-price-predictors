@@ -266,12 +266,19 @@ def pull_inputs(now=None, target_date=None, counties=None):
     """
     now = instant(now)
     day = target_day(target_date, now)
+    pending_day_ahead = None
     county_rows = _county_rows(load_counties() if counties is None else counties)
     origin = now.replace(hour=12, minute=0, second=0, microsecond=0)
     if origin > now:
         origin -= dt.timedelta(days=1)
     try:
         dam = _dam(day, now)
+        today = now.astimezone(CENTRAL).date()
+        last_start = dt.datetime.combine(today, dt.time(23, 45), CENTRAL).astimezone(UTC)
+        if target_date is None and dam['status'] == 'unavailable' and now <= last_start:
+            current = _dam(today, now)
+            if current['status'] == 'ready':
+                pending_day_ahead, day, dam = day.isoformat(), today, current
     except Exception as error:
         dam = {"source_id": "dam", "status": "error", "report_id": 12331,
                "url": DAM_LIST, "rows": [], "message": f"{type(error).__name__}: {error}"}
@@ -295,7 +302,8 @@ def pull_inputs(now=None, target_date=None, counties=None):
               else "waiting_for_dam" if dam["status"] != "ready" else "waiting_for_weather")
     signature = {"target_date": day.isoformat(), "dam_document": dam.get("document_id"),
                  "weather_origin": iso(origin), "products": [s.get("product_id") for s in weather["sources"]]}
-    return {"target_date": day.isoformat(), "checked_at_utc": iso(now), "status": status,
+    return {"target_date": day.isoformat(), "pending_day_ahead_date": pending_day_ahead,
+            "checked_at_utc": iso(now), "status": status,
             "input_id": hashlib.sha256(json.dumps(signature, sort_keys=True).encode()).hexdigest() if ready else None,
             "inputs_available_at_utc": max(s["first_observed_at_utc"] for s in sources) if ready else None,
             "dam": dam, "weather": weather, "sources": sources}

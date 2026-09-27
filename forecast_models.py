@@ -150,7 +150,11 @@ def _price_design(frame):
 
 def price_forecast(hourly_dam_rows, issued_at_utc, *, target_date=None, input_cutoff_utc=None,
                    blend_state=None, history_rows=()):
-    """Return one full Central delivery day. Partial hourly curves are rejected."""
+    """Forecast a full day or its future quarters using the complete DAM curve.
+
+    A same-day issue never backdates its run or exports intervals already begun.
+    The full 23/24/25-hour input remains necessary for the frozen model features.
+    """
     issue, cutoff = utc(issued_at_utc), utc(input_cutoff_utc or issued_at_utc)
     if cutoff > issue:
         raise ValueError('Price input cutoff must not follow issue time')
@@ -178,8 +182,10 @@ def price_forecast(hourly_dam_rows, issued_at_utc, *, target_date=None, input_cu
     day = dates.pop()
     midnight = datetime.fromisoformat(day).replace(tzinfo=CENTRAL)
     finish = midnight + timedelta(days=1)
-    if issue > midnight.astimezone(UTC):
-        raise ValueError('Full-day DAM forecast must be issued by the start of its delivery day')
+    first_start = max(midnight.astimezone(UTC), pd.Timestamp(issue).ceil('15min').to_pydatetime())
+    if first_start >= finish.astimezone(UTC):
+        raise ValueError('No future delivery quarters remain at the actual issue time')
+    horizon = 'remaining_day' if issue >= midnight.astimezone(UTC) else 'full_day'
     expected = pd.date_range(midnight.astimezone(UTC), finish.astimezone(UTC), freq='15min', inclusive='left')
     frame = pd.DataFrame(rows).sort_values(['interval_start_utc', 'settlement_point']).reset_index(drop=True)
     for _, group in frame.groupby('settlement_point'):
@@ -194,6 +200,8 @@ def price_forecast(hourly_dam_rows, issued_at_utc, *, target_date=None, input_cu
     blended = dam + state['exp002_weight'] * (values['mean'] - dam)
     records = []
     for i, row in enumerate(frame.itertuples()):
+        if row.interval_start_utc < first_start:
+            continue
         records.append(dict(settlement_point=row.settlement_point,
             interval_start_utc=stamp(row.interval_start_utc), interval_end_utc=stamp(row.interval_end_utc),
             delivery_date=day, hour_ending=int(row.hour_ending), quarter=int(row.quarter), repeated_hour_flag=row.repeated_hour_flag,
@@ -202,7 +210,7 @@ def price_forecast(hourly_dam_rows, issued_at_utc, *, target_date=None, input_cu
             rtm_p50_usd_mwh=float(ordered[i, 1]), rtm_p90_usd_mwh=float(ordered[i, 2])))
     return dict(status='available', model_version='EXP002-DAM-blend-frozen-Q2-2025',
         issued_at_utc=stamp(issue), input_cutoff_utc=stamp(cutoff), max_age_hours=48, target_date=day,
-        records=records, provenance=dict(blend=state, quantiles=manifest()['price']['quantiles'],
+        horizon=horizon, records=records, provenance=dict(blend=state, quantiles=manifest()['price']['quantiles'],
             mean_model_training=manifest()['price']['training_period'],
             mean_model_frozen=True, model_manifest_sha256=hashlib.sha256((ASSETS / 'manifest.json').read_bytes()).hexdigest()))
 

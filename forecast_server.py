@@ -82,6 +82,9 @@ def feedback(issued):
             continue
         by_key = {(r['settlement_point'],r['valid_end_utc']):r for r in actual['rows']}
         for row in records:
+            # Calibration uses strictly pre-interval forecasts, including after a same-day startup.
+            if datetime.fromisoformat(saved['issued_at_utc']) >= datetime.fromisoformat(row['interval_end_utc'])-timedelta(minutes=15):
+                continue
             observed = by_key.get((row['settlement_point'],row['interval_end_utc']))
             if observed:
                 receipt = datetime.fromisoformat(actual['first_observed_at_utc'])
@@ -93,6 +96,10 @@ def feedback(issued):
 
 
 def build_bundle(inputs, issued, history=(), previous=None):
+    if inputs['weather']['status'] != 'ready' and any(
+            r['mode']=='energy' and datetime.fromisoformat(r['interval_start_utc'])+timedelta(minutes=15)>issued
+            for r in (previous or {}).get('decisions',{}).get('records',[])):
+        raise ValueError('Weather inputs are incomplete; keeping the existing forecast and simulated battery state.')
     missing = lambda reason: {'status':'unavailable','reason':reason[:300]}
     price = missing(inputs['dam'].get('message','Tomorrow’s complete DAM curve is not available.'))
     outage = missing('The complete issued weather inputs are not available for the fixed 12Z horizon.')
@@ -201,7 +208,9 @@ class ForecastService:
                     self.completed = self.completed[-400:]
                     atomic_json(CACHE/'automatic-runs.json',self.completed)
             message = ('Forecast ready for '+price['target_date']+'.' if price['status']=='available' else 'County outlook updated. Tomorrow’s prices are waiting for ERCOT’s DAM release.')
-            if price['status']=='available' and price['target_date'] != inputs['target_date']:
+            if price.get('horizon') == 'remaining_day':
+                message = 'Price forecast ready for the remaining intervals of '+price['target_date']+'.'
+            if price['status']=='available' and (inputs.get('pending_day_ahead_date') or price['target_date'] != inputs['target_date']):
                 message += ' The next day’s DAM release is still pending.'
             self.update(running=False,message=message,last_success_utc=iso(issued),export_version=hashlib.sha256(self.output.read_bytes()).hexdigest(),contract_status=checked['status'],last_error=None)
         except Exception as error:
