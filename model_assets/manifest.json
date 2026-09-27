@@ -4,6 +4,7 @@
   "sources": {
     "data/price/experiments/EXP002/folds/2025Q2/models.joblib": "b1622ccf36b09412396a2c55d043046f06b3c09ec1105e05ff0cd0c75c8fb30e",
     "data/outage/models/onset_county.joblib": "2b87e89e4dbb83109591479eb8b926cb0cd7208f326cd3942cfe6b9446f4b6fe",
+    "data/outage/models/duration_county.joblib": "eea2786cb5ab8067714f171cc217a637e96bbcbc4166d4d48a13c4872846add4",
     "run_dam_context_experiments.py": "f9fb946a6793213d2aa0b5d6690a30e904b4104819b10ff61bfa70295830cca8",
     "train_outage_models.py": "8c79e5c912fb000d356d961d5644766c740d3281756e6f61a02b8c0daab345bc",
     "data/price/experiments/BATTERY_BLEND/weights.csv": "23d1e38793d9c1545ae1de6cf7094b977f2f545470c17681c01e4c6e687194da",
@@ -17,6 +18,7 @@
     "exp002_p50.txt": "acf76803f661fe405d7411f71a939b0692c606bccf3f6d3b78b913bd4f7f99bc",
     "exp002_p90.txt": "6eb4913e68ef1c2267f5ffd5a7ca9f217f2327f94722d6c11c0da56836557abb",
     "onset_county.json": "14e1fd027ff052c1950ed96e260da19846e9ea2222b937b40528d65356301c87",
+    "duration_county.joblib": "eea2786cb5ab8067714f171cc217a637e96bbcbc4166d4d48a13c4872846add4",
     "counties.json": "2c7e221e6c51e13a6f3c939c0119d5583a46df284cafae55121d19713d6a5d5a",
     "blend_history.json": "bacfcce9ffac3b3b96c90758a492c370d18532a10da736977aa1585b040379bb",
     "replay.json": "3b7f7e1789f513bf01af8eb2ddeac0b2fa28fa704e9344c35ba94f83d4ddf949"
@@ -85,6 +87,8 @@
     "forecast_origin_hour_utc": 12,
     "eligible_counties": 186,
     "target": "First recorded PNNL qualifying county scenario onset in 24 hours",
+    "duration_family": "RandomForestClassifier + isotonic calibration",
+    "duration_asset": "duration_county.joblib",
     "limitations": [
       "County events are not household outages.",
       "No active episode is assumed unless observed status is supplied.",

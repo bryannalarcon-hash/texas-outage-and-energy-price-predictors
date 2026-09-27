@@ -12,6 +12,7 @@
 !analyze_dam_rt.py
 !build_outlook_features.py
 !build_price_model_data.py
+!build_price_outage_feature.py
 !download_eaglei_tx.py
 !run_price_experiment.py
 !run_dam_context_experiments.py
@@ -35,6 +36,7 @@ model_assets/*
 !model_assets/exp002_p50.txt
 !model_assets/exp002_p90.txt
 !model_assets/onset_county.json
+!model_assets/duration_county.joblib
 !model_assets/counties.json
 !model_assets/blend_history.json
 !model_assets/replay.json
@@ -60,10 +62,6 @@ frontend/*
 !frontend/browser-check.mjs
 !frontend/forecast-browser-check.mjs
 !frontend/test-data.mjs
-!frontend/README.md
-!frontend/model-output-contract.md
-!frontend/terrain-sources.md
-!frontend/.gitignore
 !frontend/data/
 frontend/data/*
 !frontend/data/dummy-data.json

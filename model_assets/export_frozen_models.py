@@ -7,6 +7,7 @@ clones use the committed safe text/JSON assets directly via forecast_models.py.
 import hashlib
 import importlib.metadata
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -21,6 +22,7 @@ import train_outage_models as outage_source
 OUT = Path(__file__).resolve().parent
 PRICE = ROOT / 'data/price/experiments/EXP002/folds/2025Q2/models.joblib'
 ONSET = ROOT / 'data/outage/models/onset_county.joblib'
+DURATION = ROOT / 'data/outage/models/duration_county.joblib'
 BLEND = ROOT / 'data/price/experiments/BATTERY_BLEND'
 
 
@@ -53,6 +55,8 @@ def main():
         calibration=dict(x=calibration.X_thresholds_.tolist(), y=calibration.y_thresholds_.tolist()),
         note='Tree values already include shrinkage. Sigmoid then clipped isotonic interpolation.'))
     names.append('onset_county.json')
+    shutil.copyfile(DURATION, OUT / 'duration_county.joblib')
+    names.append('duration_county.joblib')
     metrics = json.loads((ROOT / 'data/outage/models/metrics.json').read_text())
     counties = outage_source.load_counties()
     geo = json.loads(outage_source.GEO.read_text())
@@ -104,7 +108,7 @@ def main():
         meaning='Historical fixture from the frozen battery experiment; timestamps must remain historical.'))
     names.append('replay.json')
     manifest = dict(format_version=1, model_fits=0,
-        sources={str(p.relative_to(ROOT)): digest(p) for p in (PRICE, ONSET, Path(price_source.__file__),
+        sources={str(p.relative_to(ROOT)): digest(p) for p in (PRICE, ONSET, DURATION, Path(price_source.__file__),
                     Path(outage_source.__file__), BLEND / 'weights.csv', BLEND / 'prices.csv.gz',
                     BLEND / 'outage_inputs/forecasts.csv.gz', BLEND / 'outage_inputs/county_issue_inputs.csv.gz')},
         assets_sha256={name: digest(OUT / name) for name in names},
@@ -116,6 +120,7 @@ def main():
         outage=dict(family='HistGradientBoostingClassifier + isotonic calibration', features=outage['features'],
             training_years='2018-2021', selection_calibration_year=2022, forecast_origin_hour_utc=12,
             eligible_counties=len(metrics['eligible_fips']), target='First recorded PNNL qualifying county scenario onset in 24 hours',
+            duration_family='RandomForestClassifier + isotonic calibration', duration_asset='duration_county.joblib',
             limitations=['County events are not household outages.', 'No active episode is assumed unless observed status is supplied.',
                         'Missing recorded scenarios may reflect missing coverage.', 'Duration is unavailable without active episode observations.']),
         versions={name: importlib.metadata.version(name) for name in ('numpy', 'pandas', 'lightgbm', 'scikit-learn')})
