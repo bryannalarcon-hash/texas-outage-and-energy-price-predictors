@@ -1,0 +1,602 @@
+{
+  "schema_version": 1,
+  "description": "Real DEM hillshade, with no generated noise, contour pattern, roads or synthetic terrain.",
+  "sources": {
+    "terrain": "https://registry.opendata.aws/terrain-tiles/",
+    "tile_template": "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{zoom}/{column}/{row}.png",
+    "provider_sources": [
+      "etopo1",
+      "gmted",
+      "srtm"
+    ],
+    "source_imagery_count": 194,
+    "cities": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2025_Gazetteer/2025_gaz_place_48.txt",
+    "attribution": "Terrain: Mapzen / AWS Terrain Tiles; SRTM and GMTED2010 courtesy of the U.S. Geological Survey; ocean bathymetry: NOAA ETOPO1. City points: U.S. Census Bureau, 2025 Gazetteer.",
+    "source_manifest_sha256": "d34292fd63409171639aaaaffd7117389ab325709bc6b9887f68e55416834681"
+  },
+  "generation": {
+    "script": "tooling/build-terrain.py",
+    "tile_zoom": 9,
+    "tile_bounds_xy_inclusive": [
+      103,
+      199,
+      124,
+      218
+    ],
+    "tile_count": 440,
+    "input_ground_spacing_m": [
+      243.67,
+      276.73
+    ],
+    "dem_geographic_bounds_wsen": [
+      -107.578125,
+      25.165173,
+      -92.109375,
+      37.160317
+    ],
+    "light_azimuths_deg_weights": [
+      [
+        315,
+        0.72
+      ],
+      [
+        45,
+        0.18
+      ],
+      [
+        270,
+        0.1
+      ]
+    ],
+    "light_altitude_deg": 40,
+    "slope_exaggeration": 7,
+    "dem_smoothing_sigma_px": 0.65,
+    "local_relief_sigma_px": 12,
+    "neutral_gray": 128,
+    "python": "3.14.4",
+    "numpy": "2.5.3",
+    "scipy": "1.16.3",
+    "pillow": "12.3.0"
+  },
+  "registration": {
+    "outages": {
+      "method": "Exact existing spherical Mercator fit from build_outage_chart_data.py:county_shapes",
+      "mercator_degrees_minimum": [
+        -106.64622519560922,
+        -39.25362994980602
+      ],
+      "scale": 55.7093689692846,
+      "padding": [
+        84.0335161586695,
+        12.0
+      ],
+      "raw_county_geojson_sha256": "00b4cd3de323adb5d1f00bbc1d4ad938675aecf5aad40814fc582b8b8c570d04"
+    },
+    "energy": {
+      "method": "Approximate thin-plate spline registration to 16 hand-selected schematic landmarks; not a geographic load-zone boundary",
+      "control_points": [
+        {
+          "name": "Panhandle northwest",
+          "longitude": -103.00024859,
+          "latitude": 36.50037931,
+          "energy": [
+            496,
+            15
+          ]
+        },
+        {
+          "name": "Panhandle northeast",
+          "longitude": -100.00040736,
+          "latitude": 36.49991561,
+          "energy": [
+            834,
+            25
+          ]
+        },
+        {
+          "name": "Red River / 100th meridian",
+          "longitude": -99.99991709,
+          "latitude": 34.56038715,
+          "energy": [
+            831,
+            290
+          ]
+        },
+        {
+          "name": "New Mexico southeast corner",
+          "longitude": -103.06464864,
+          "latitude": 32.00041844,
+          "energy": [
+            466,
+            632
+          ]
+        },
+        {
+          "name": "El Paso western border",
+          "longitude": -106.64621757,
+          "latitude": 31.89594876,
+          "energy": [
+            49,
+            609
+          ]
+        },
+        {
+          "name": "Presidio border",
+          "longitude": -104.37242206,
+          "latitude": 29.54351745,
+          "energy": [
+            280,
+            947
+          ]
+        },
+        {
+          "name": "Big Bend southern border",
+          "longitude": -103.085727,
+          "latitude": 29.05421591,
+          "energy": [
+            437,
+            1045
+          ]
+        },
+        {
+          "name": "Texarkana border",
+          "longitude": -94.05609026,
+          "latitude": 33.56725562,
+          "energy": [
+            1513,
+            419
+          ]
+        },
+        {
+          "name": "Sabine mouth",
+          "longitude": -93.83318612,
+          "latitude": 29.67437372,
+          "energy": [
+            1539,
+            947
+          ]
+        },
+        {
+          "name": "Rio Grande southern border",
+          "longitude": -97.37264576,
+          "latitude": 25.84023868,
+          "energy": [
+            1140,
+            1490
+          ]
+        },
+        {
+          "name": "Rio Grande Gulf coast",
+          "longitude": -97.14681596,
+          "latitude": 25.97031596,
+          "energy": [
+            1171,
+            1473
+          ]
+        },
+        {
+          "name": "Austin",
+          "longitude": -97.754134,
+          "latitude": 30.298622,
+          "energy": [
+            1095,
+            878
+          ]
+        },
+        {
+          "name": "San Antonio",
+          "longitude": -98.524635,
+          "latitude": 29.462809,
+          "energy": [
+            995,
+            995
+          ]
+        },
+        {
+          "name": "Houston",
+          "longitude": -95.388806,
+          "latitude": 29.785743,
+          "energy": [
+            1380,
+            965
+          ]
+        },
+        {
+          "name": "Corpus Christi",
+          "longitude": -97.173385,
+          "latitude": 27.754252,
+          "energy": [
+            1132,
+            1230
+          ]
+        },
+        {
+          "name": "Laredo",
+          "longitude": -99.489181,
+          "latitude": 27.560379,
+          "energy": [
+            900,
+            1266
+          ]
+        }
+      ]
+    },
+    "geometry_sha256": {
+      "outages": "c2ad90b3b5d7f0cb66782e4b66081ead0a9da89aae4c0f2dbb894d4b85b8e2f2",
+      "energy": "b0412b5e740e97edca4fc9297b1360f393fbeb6f622f82f200d315f2d2b75621"
+    }
+  },
+  "assets": {
+    "outages": {
+      "image": "data/texas-terrain-outages.webp",
+      "view_box": [
+        0,
+        0,
+        900,
+        720
+      ],
+      "image_rect": {
+        "x": 0,
+        "y": 0,
+        "width": 900,
+        "height": 720
+      },
+      "pixel_size": [
+        2400,
+        1920
+      ],
+      "preserve_aspect_ratio": "none",
+      "sha256": "24fb7a3f9d8ac60df7992e212c0c83f2fe52ff4fec20bacba375a98d6ee597ff",
+      "visible_grayscale_percentiles": [
+        69.0,
+        113.0,
+        127.0,
+        138.0,
+        157.0
+      ]
+    },
+    "energy": {
+      "image": "data/texas-terrain-energy.webp",
+      "view_box": [
+        0,
+        0,
+        1654,
+        1504
+      ],
+      "image_rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1654,
+        "height": 1504
+      },
+      "pixel_size": [
+        2400,
+        2182
+      ],
+      "preserve_aspect_ratio": "none",
+      "sha256": "ea7c70ad2a87dbddaae4cef5e8b223685db26bed3d766382688e64f5f68be730",
+      "visible_grayscale_percentiles": [
+        69.0,
+        113.0,
+        127.0,
+        138.0,
+        158.0
+      ]
+    }
+  },
+  "cities": [
+    {
+      "name": "Amarillo",
+      "geoid": "4803000",
+      "longitude": -101.830194,
+      "latitude": 35.199903,
+      "outages": [
+        352.33,
+        101.39
+      ],
+      "energy": [
+        624.12,
+        199.49
+      ]
+    },
+    {
+      "name": "Lubbock",
+      "geoid": "4845000",
+      "longitude": -101.888883,
+      "latitude": 33.561901,
+      "outages": [
+        349.06,
+        211.96
+      ],
+      "energy": [
+        612.47,
+        423.7
+      ]
+    },
+    {
+      "name": "El Paso",
+      "geoid": "4824000",
+      "longitude": -106.431106,
+      "latitude": 31.84778,
+      "outages": [
+        96.02,
+        325.45
+      ],
+      "energy": [
+        72.97,
+        617.04
+      ]
+    },
+    {
+      "name": "Midland",
+      "geoid": "4848072",
+      "longitude": -102.113467,
+      "latitude": 32.024642,
+      "outages": [
+        336.55,
+        313.84
+      ],
+      "energy": [
+        578.49,
+        635.22
+      ]
+    },
+    {
+      "name": "Abilene",
+      "geoid": "4801000",
+      "longitude": -99.738147,
+      "latitude": 32.454514,
+      "outages": [
+        468.88,
+        285.53
+      ],
+      "energy": [
+        861.63,
+        580.22
+      ]
+    },
+    {
+      "name": "Fort Worth",
+      "geoid": "4827000",
+      "longitude": -97.348573,
+      "latitude": 32.781954,
+      "outages": [
+        602.0,
+        263.87
+      ],
+      "energy": [
+        1144.75,
+        537.36
+      ]
+    },
+    {
+      "name": "Dallas",
+      "geoid": "4819000",
+      "longitude": -96.766513,
+      "latitude": 32.793333,
+      "outages": [
+        634.43,
+        263.12
+      ],
+      "energy": [
+        1212.62,
+        536.19
+      ]
+    },
+    {
+      "name": "Waco",
+      "geoid": "4876000",
+      "longitude": -97.18975,
+      "latitude": 31.557994,
+      "outages": [
+        610.85,
+        344.43
+      ],
+      "energy": [
+        1167.44,
+        707.54
+      ]
+    },
+    {
+      "name": "Austin",
+      "geoid": "4805000",
+      "longitude": -97.754134,
+      "latitude": 30.298622,
+      "outages": [
+        579.41,
+        426.22
+      ],
+      "energy": [
+        1095.0,
+        878.0
+      ]
+    },
+    {
+      "name": "San Antonio",
+      "geoid": "4865000",
+      "longitude": -98.524635,
+      "latitude": 29.462809,
+      "outages": [
+        536.48,
+        479.92
+      ],
+      "energy": [
+        995.0,
+        995.0
+      ]
+    },
+    {
+      "name": "Houston",
+      "geoid": "4835000",
+      "longitude": -95.388806,
+      "latitude": 29.785743,
+      "outages": [
+        711.18,
+        459.23
+      ],
+      "energy": [
+        1380.0,
+        965.0
+      ]
+    },
+    {
+      "name": "Beaumont",
+      "geoid": "4807000",
+      "longitude": -94.14533,
+      "latitude": 30.084912,
+      "outages": [
+        780.45,
+        439.99
+      ],
+      "energy": [
+        1509.67,
+        899.16
+      ]
+    },
+    {
+      "name": "Corpus Christi",
+      "geoid": "4817000",
+      "longitude": -97.173385,
+      "latitude": 27.754252,
+      "outages": [
+        611.76,
+        588.35
+      ],
+      "energy": [
+        1132.0,
+        1230.0
+      ]
+    },
+    {
+      "name": "Laredo",
+      "geoid": "4841464",
+      "longitude": -99.489181,
+      "latitude": 27.560379,
+      "outages": [
+        482.75,
+        600.54
+      ],
+      "energy": [
+        900.0,
+        1266.0
+      ]
+    },
+    {
+      "name": "Brownsville",
+      "geoid": "4810768",
+      "longitude": -97.480625,
+      "latitude": 25.989404,
+      "outages": [
+        594.64,
+        698.57
+      ],
+      "energy": [
+        1126.3,
+        1470.68
+      ]
+    }
+  ],
+  "city_coordinate_note": "Census representative internal points, not downtown street coordinates. Energy positions use the approximate schematic warp.",
+  "verification": {
+    "terrain_landmarks": [
+      {
+        "name": "Guadalupe Mountains",
+        "longitude": -104.86,
+        "latitude": 31.89,
+        "elevation_m": 2546.54,
+        "shade_std": 41.34,
+        "outages": [
+          183.54,
+          322.68
+        ],
+        "energy": [
+          253.33,
+          626.75
+        ],
+        "round_trip_county_svg_units": 0.163
+      },
+      {
+        "name": "Davis Mountains",
+        "longitude": -104.16,
+        "latitude": 30.67,
+        "elevation_m": 1954.34,
+        "shade_std": 49.09,
+        "outages": [
+          222.54,
+          402.21
+        ],
+        "energy": [
+          318.09,
+          797.83
+        ],
+        "round_trip_county_svg_units": 0.262
+      },
+      {
+        "name": "Palo Duro Canyon",
+        "longitude": -101.7,
+        "latitude": 34.94,
+        "elevation_m": 943.05,
+        "shade_std": 24.37,
+        "outages": [
+          359.58,
+          119.08
+        ],
+        "energy": [
+          638.11,
+          235.42
+        ],
+        "round_trip_county_svg_units": 0.026
+      },
+      {
+        "name": "Amarillo plains",
+        "longitude": -101.85,
+        "latitude": 35.22,
+        "elevation_m": 1110.33,
+        "shade_std": 10.54,
+        "outages": [
+          351.23,
+          100.02
+        ],
+        "energy": [
+          621.94,
+          196.68
+        ],
+        "round_trip_county_svg_units": 0.029
+      },
+      {
+        "name": "Austin",
+        "longitude": -97.743,
+        "latitude": 30.267,
+        "elevation_m": 161.59,
+        "shade_std": 16.03,
+        "outages": [
+          580.03,
+          428.26
+        ],
+        "energy": [
+          1096.07,
+          882.49
+        ],
+        "round_trip_county_svg_units": 0.012
+      },
+      {
+        "name": "Houston",
+        "longitude": -95.369,
+        "latitude": 29.76,
+        "elevation_m": 14.87,
+        "shade_std": 2.95,
+        "outages": [
+          712.28,
+          460.88
+        ],
+        "energy": [
+          1381.96,
+          968.28
+        ],
+        "round_trip_county_svg_units": 0.048
+      }
+    ],
+    "missing_visible_dem_pixels": 0,
+    "mountain_vs_houston_shade_std_ratio": 14.01
+  }
+}

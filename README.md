@@ -46,6 +46,7 @@ The site must be served over HTTP because it loads JavaScript modules and JSON. 
 | Demo prices, outage probabilities, and battery actions | Yes | Deterministic synthetic fixture in `frontend/data/dummy-data.json`; not observed conditions or model predictions. |
 | ERCOT load-zone shapes | Yes | Schematic trace of the [ERCOT 2023 load-zone map](https://www.ercot.com/news/mediakit/maps); not operational address boundaries. |
 | Texas county shapes | Yes | Simplified [Texas Water Development Board county boundaries](https://services.twdb.texas.gov/arcgis/rest/services/PWS/Texas_Counties_FIPS/FeatureServer/0). |
+| Terrain relief and city points | Yes | [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) and the [U.S. Census 2025 Gazetteer](https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2025_Gazetteer/2025_gaz_place_48.txt); display context only. |
 | DAM and RTM settlement-point prices | No | [ERCOT market archives](https://www.ercot.com/mktinfo/rtm); raw archives and trained artifacts are excluded. |
 | County outage scenarios | No | [PNNL/OEDI merged EAGLE-I scenarios](https://data.openei.org/submissions/6458); these are county scenarios, not household outages. |
 | Severe-weather outlooks | No | NOAA/NWS SPC and WPC products processed through the [Iowa Environmental Mesonet archive](https://mesonet.agron.iastate.edu/request/gis/outlooks.phtml). |

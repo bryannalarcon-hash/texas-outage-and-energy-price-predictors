@@ -11,6 +11,7 @@ const percentLabel = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }
 const percent = value => `${percentLabel.format(value * 100)}%`;
 let state = initialState();
 let geometry = null;
+let terrain = null;
 let controller = null;
 let renderedMode = null;
 let lastPanel = '';
@@ -51,6 +52,7 @@ function gradientColor(mode, level, position) {
 }
 
 function paintGradients(from = state.mode, progress = 1) {
+  const atmosphere = [];
   for (const [level, gradient] of [...get('map-gradients').children].entries()) {
     for (const [index, stop] of [...gradient.children].entries()) {
       const position = index / (gradient.children.length - 1);
@@ -64,8 +66,10 @@ function paintGradients(from = state.mode, progress = 1) {
         color = mix(color, state.mode === 'outages' ? [218, 234, 240] : [255, 239, 182], band * rays);
       }
       stop.setAttribute('stop-color', `rgb(${color.join(' ')})`);
+      if (level === 1) atmosphere.push(`rgb(${color.join(' ')} / .28) ${position * 100}%`);
     }
   }
+  get('workspace').style.setProperty('--map-atmosphere', `linear-gradient(158deg, ${atmosphere.join(',')})`);
 }
 
 function animateGradients(from) {
@@ -124,9 +128,11 @@ async function loadSource(source, saved = null) {
     const payloadRequest = fetch(`data/${filename}`, { signal: operation.signal, cache: 'no-store' }).then(response => response.status === 404 && source === 'model'
       ? unavailablePayload('No compliant model-output.json has been exported. Historical research data is not a forecast.')
       : readJsonResponse(response));
-    const [nextGeometry, payload] = await Promise.all([geometryRequest, payloadRequest]);
+    const terrainRequest = terrain ? Promise.resolve(terrain) : fetch('data/texas-terrain.json', { signal: operation.signal }).then(readJsonResponse).catch(() => null);
+    const [nextGeometry, payload, nextTerrain] = await Promise.all([geometryRequest, payloadRequest, terrainRequest]);
     if (operation.signal.aborted) return;
     geometry = nextGeometry;
+    terrain = nextTerrain;
     dispatch({ type: 'RESOLVE', requestId, payload });
   } catch (error) {
     dispatch({ type: 'REJECT', requestId, message: operation.signal.aborted ? 'Forecast loading timed out. Retry or switch data source.' : error.message });
@@ -148,10 +154,10 @@ function buildMap() {
   updateMapView();
   get('map-object').setAttribute('transform', `translate(${centerX} ${centerY}) rotate(-1.2) skewX(-2) scale(1 .91) translate(${-centerX} ${-centerY})`);
   map.style.setProperty('--terrain-depth', `${31 * unit}px`);
-  map.style.setProperty('--region-seam-depth', `${5 * unit}px`);
-  map.style.setProperty('--region-side-depth', `${22 * unit}px`);
+  map.style.setProperty('--region-seam-depth', `${2 * unit}px`);
+  map.style.setProperty('--region-side-depth', `${31 * unit}px`);
   map.style.setProperty('--region-pin-lift', `${25 * unit}px`);
-  map.style.setProperty('--region-preview-lift', `${32 * unit}px`);
+  map.style.setProperty('--region-preview-lift', `${29 * unit}px`);
   map.style.setProperty('--map-unit', unit);
   get('survey-grid').setAttribute('patternTransform', `scale(${unit})`);
   const gradients = get('map-gradients');
@@ -210,6 +216,20 @@ function buildMap() {
       get('map-labels').append(label);
     }
   }
+  const cityGroup = get('map-cities');
+  const omittedCities = state.mode === 'energy' ? ['Austin', 'San Antonio', 'Houston', 'Fort Worth', 'Waco', 'Beaumont'] : ['Fort Worth', 'Waco', 'Beaumont'];
+  for (const city of terrain?.cities ?? []) {
+    const coordinates = city[state.mode];
+    if (omittedCities.includes(city.name) || !Array.isArray(coordinates) || coordinates.length !== 2 || !coordinates.every(Number.isFinite)) continue;
+    const [cityX, cityY] = coordinates;
+    const marker = svgElement('g', { class: 'city-marker' });
+    const cityLabel = svgElement('text', { x: cityX + 6 * unit, y: cityY + 4 * unit });
+    cityLabel.textContent = city.name;
+    marker.append(svgElement('circle', { cx: cityX, cy: cityY, r: 2.3 * unit }), cityLabel);
+    const target = [...get('utility-targets').children, ...get('region-targets').children].find(path => path.isPointInFill(new DOMPoint(cityX, cityY)));
+    if (target) marker.dataset.cityRegion = target.dataset.region;
+    cityGroup.append(marker);
+  }
   get('region-select').replaceChildren(options);
 }
 
@@ -259,6 +279,10 @@ function renderMap() {
   for (const label of get('map-labels').children) {
     label.classList.toggle('preview', label.dataset.label === previewId);
     label.classList.toggle('pinned', label.dataset.label === state.selectedRegion);
+  }
+  for (const marker of get('map-cities').children) {
+    marker.classList.toggle('preview', marker.dataset.cityRegion === previewId);
+    marker.classList.toggle('pinned', marker.dataset.cityRegion === state.selectedRegion);
   }
   get('region-select').disabled = !interactive;
   get('region-select').value = state.selectedRegion ?? '';
@@ -387,7 +411,7 @@ function renderTimeline() {
   if (renderedTimeline !== timeline) {
     renderedTimeline = timeline;
     get('interval-select').replaceChildren(...timeline.map((entry, index) => new Option(formatTime(entry.interval_start_utc), String(index))));
-    const indices = timeline.length ? [...new Set(Array.from({ length: 5 }, (_, index) => Math.round(index * (timeline.length - 1) / 4)))].filter(index => index >= 0) : [];
+    const indices = timeline.length ? [...new Set(Array.from({ length: 5 }, (_, index) => Math.min(timeline.length - 1, Math.round(index * timeline.length / 4))))] : [];
     get('time-ticks').innerHTML = indices.map(index => `<button type="button" data-time="${index}" aria-label="Jump to ${escape(formatTime(timeline[index].interval_start_utc))}">${escape(shortTime.format(new Date(timeline[index].interval_start_utc)))}</button>`).join('');
   }
   get('interval-select').value = String(state.timeIndex);

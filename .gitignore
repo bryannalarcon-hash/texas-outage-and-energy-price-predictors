@@ -24,3 +24,4 @@ frontend/data/*
 !frontend/data/texas-load-zones.json
 !frontend/data/texas-terrain-energy.webp
 !frontend/data/texas-terrain-outages.webp
+!frontend/data/texas-terrain.json
